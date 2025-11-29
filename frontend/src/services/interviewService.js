@@ -356,6 +356,45 @@ class InterviewService {
     if (recentAvg < earlierAvg - 0.3) return 'declining';
     return 'stable';
   }
+
+  /**
+   * Save interview results to localStorage
+   * @param {Object} results - Interview results data
+   */
+  saveResults(results) {
+    try {
+      localStorage.setItem('lastInterviewResults', JSON.stringify(results));
+    } catch (error) {
+      console.error('Error saving results:', error);
+    }
+  }
+
+  /**
+   * Get last interview results
+   * @returns {Object|null} Last interview results or null
+   */
+  getLastResults() {
+    try {
+      const results = localStorage.getItem('lastInterviewResults');
+      return results ? JSON.parse(results) : null;
+    } catch (error) {
+      console.error('Error getting last results:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Clear current interview session data
+   */
+  clearCurrentSession() {
+    try {
+      localStorage.removeItem('currentInterview');
+      localStorage.removeItem('interviewQuestions');
+      localStorage.removeItem('interviewProgress');
+    } catch (error) {
+      console.error('Error clearing session:', error);
+    }
+  }
 }
 
 export default new InterviewService();

@@ -280,15 +280,52 @@ const InterviewSession = () => {
     if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
     
+    // Calculate results
+    const answeredQuestions = Object.keys(answers).length;
+    const evaluationScores = Object.values(evaluations).map(e => e?.score || 0);
+    const overallScore = evaluationScores.length > 0 
+      ? Math.round(evaluationScores.reduce((a, b) => a + b, 0) / evaluationScores.length)
+      : 0;
+    
+    // Prepare question results
+    const questionResults = questions.map((q, idx) => ({
+      question: q.question,
+      userAnswer: answers[idx]?.answer || 'No answer provided',
+      score: evaluations[idx]?.score || 0,
+      feedback: evaluations[idx]?.feedback || 'No feedback available'
+    }));
+    
+    const results = {
+      jobRole: interview?.setup?.jobRole || 'Interview',
+      interviewType: interview?.setup?.interviewType || 'mixed',
+      difficulty: interview?.setup?.difficulty || 'medium',
+      totalQuestions: questions.length,
+      answeredQuestions,
+      overallScore,
+      timeTaken: formatTime(sessionElapsed),
+      avgResponseTime: answeredQuestions > 0 
+        ? formatTime(sessionElapsed / answeredQuestions)
+        : '0:00',
+      accuracyRate: overallScore,
+      confidenceLevel: overallScore >= 80 ? 'High' : overallScore >= 60 ? 'Medium' : 'Needs Work',
+      strengths: evaluations[0]?.strengths || [
+        'Clear communication',
+        'Good problem-solving approach',
+        'Technical knowledge demonstrated'
+      ],
+      improvements: evaluations[0]?.improvements || [
+        'Provide more detailed examples',
+        'Consider edge cases',
+        'Improve code optimization'
+      ],
+      questionResults
+    };
+    
+    // Save results to localStorage for Results page
+    interviewService.saveResults(results);
+    
     // Navigate to results
-    navigate('/interview-results', {
-      state: {
-        interview,
-        answers,
-        evaluations,
-        totalDuration: sessionElapsed
-      }
-    });
+    navigate('/results', { state: { results } });
   };
 
   // Utility functions
