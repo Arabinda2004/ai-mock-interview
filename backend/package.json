@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "ml:service": "cd ml-service && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
     "test": "jest",
     "test:watch": "jest --watch",
     "migrate": "npx sequelize-cli db:migrate",
@@ -17,13 +18,14 @@
     "practice",
     "nodejs",
     "express",
-    "gemini"
+    "ml-service"
   ],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "@google/generative-ai": "^0.2.1",
+    "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

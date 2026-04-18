@@ -1,182 +1,110 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/postgresql');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 
-const Answer = sequelize.define('Answer', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-  },
-  questionId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'Questions',
-      key: 'id',
-    },
-  },
-  userId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'Users',
-      key: 'id',
-    },
+/**
+ * Answer Schema for MongoDB
+ * Follows the architecture specification for AI Mock Interview Platform
+ */
+const answerSchema = new mongoose.Schema({
+  answerId: {
+    type: String,
+    default: () => uuidv4(),
+    unique: true,
+    required: true,
+    index: true
   },
   interviewId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'Interviews',
-      key: 'id',
-    },
+    type: String,
+    required: [true, 'Interview ID is required'],
+    index: true
   },
-  answerText: {
-    type: DataTypes.TEXT,
-    allowNull: true,
+  questionId: {
+    type: String,
+    required: [true, 'Question ID is required'],
+    index: true
   },
-  answerType: {
-    type: DataTypes.ENUM('text', 'voice', 'video'),
-    defaultValue: 'text',
+  userAnswer: {
+    type: String,
+    required: [true, 'User answer is required'],
+    trim: true
   },
-  audioUrl: {
-    type: DataTypes.STRING,
-    allowNull: true,
+  answerTimeSeconds: {
+    type: Number,
+    required: [true, 'Answer time is required'],
+    min: 0
   },
-  videoUrl: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  startTime: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW,
-  },
-  endTime: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
-  timeTaken: {
-    type: DataTypes.INTEGER,
-    allowNull: true, // in seconds
-  },
-  score: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-    validate: {
-      min: 0,
-      max: 100,
-    },
-  },
-  feedback: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  evaluationDetails: {
-    type: DataTypes.JSON,
-    defaultValue: {},
-  },
-  strengths: {
-    type: DataTypes.JSON,
-    defaultValue: [],
-  },
-  improvements: {
-    type: DataTypes.JSON,
-    defaultValue: [],
-  },
-  technicalAccuracy: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-    validate: {
+  aiReview: {
+    score: {
+      type: Number,
       min: 0,
       max: 10,
+      default: null
     },
-  },
-  communication: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-    validate: {
+    maxScore: {
+      type: Number,
+      default: 10
+    },
+    technicalScore: {
+      type: Number,
       min: 0,
       max: 10,
+      default: null
     },
-  },
-  completeness: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-    validate: {
+    communicationScore: {
+      type: Number,
       min: 0,
       max: 10,
+      default: null
     },
+    quality: {
+      type: String,
+      enum: ['Excellent', 'Good', 'Average', 'Below Average', 'Poor', ''],
+      default: ''
+    },
+    feedback: {
+      type: String,
+      default: ''
+    },
+    missingPoints: {
+      type: [String],
+      default: []
+    },
+    improvementTip: {
+      type: String,
+      default: ''
+    }
   },
-  isEvaluated: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-  },
-  evaluatedAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
-  },
-  metadata: {
-    type: DataTypes.JSON,
-    defaultValue: {},
-  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
 }, {
-  hooks: {
-    beforeUpdate: (answer) => {
-      if (answer.endTime && answer.startTime) {
-        answer.timeTaken = Math.round((answer.endTime - answer.startTime) / 1000);
-      }
-      if (answer.changed('score') || answer.changed('feedback')) {
-        answer.isEvaluated = true;
-        answer.evaluatedAt = new Date();
-      }
-    },
-  },
-  indexes: [
-    {
-      fields: ['questionId'],
-    },
-    {
-      fields: ['userId'],
-    },
-    {
-      fields: ['interviewId'],
-    },
-    {
-      fields: ['answerType'],
-    },
-    {
-      fields: ['isEvaluated'],
-    },
-  ],
+  timestamps: false // Using custom createdAt field
 });
 
-// Instance methods
-Answer.prototype.calculateDuration = function() {
-  if (this.startTime && this.endTime) {
-    return Math.round((this.endTime - this.startTime) / 1000); // in seconds
+// Indexes for faster queries
+answerSchema.index({ interviewId: 1 });
+answerSchema.index({ questionId: 1 });
+answerSchema.index({ answerId: 1 });
+
+// Instance method to check if answer is reviewed
+answerSchema.methods.isReviewed = function() {
+  return this.aiReview && this.aiReview.score !== null;
+};
+
+// Instance method to get quality rating
+answerSchema.methods.getQualityRating = function() {
+  return this.aiReview?.quality || 'Not Reviewed';
+};
+
+// Instance method to calculate percentage score
+answerSchema.methods.getPercentageScore = function() {
+  if (this.aiReview?.score !== null && this.aiReview?.maxScore) {
+    return (this.aiReview.score / this.aiReview.maxScore) * 100;
   }
-  return null;
+  return 0;
 };
 
-Answer.prototype.isCompleted = function() {
-  return this.endTime !== null;
-};
-
-Answer.prototype.hasContent = function() {
-  return !!(this.answerText || this.audioUrl || this.videoUrl);
-};
-
-Answer.prototype.getOverallScore = function() {
-  if (this.technicalAccuracy && this.communication && this.completeness) {
-    // Weighted average: 40% technical, 30% communication, 30% completeness
-    return (
-      (this.technicalAccuracy * 0.4 + 
-       this.communication * 0.3 + 
-       this.completeness * 0.3) * 10
-    );
-  }
-  return this.score || 0;
-};
+const Answer = mongoose.model('Answer', answerSchema);
 
 module.exports = Answer;

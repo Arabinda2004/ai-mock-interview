@@ -1,0 +1,47 @@
+{
+  "model": "sshleifer/tiny-distilroberta-base",
+  "seed": 42,
+  "splits": {
+    "train": 1400,
+    "validation": 300,
+    "test": 300
+  },
+  "classification": {
+    "label_map": {
+      "Poor": 0,
+      "Below Average": 1,
+      "Average": 2,
+      "Good": 3,
+      "Excellent": 4
+    },
+    "test_metrics": {
+      "test_loss": 1.6094379425048828,
+      "test_accuracy": 0.2,
+      "test_f1_macro": 0.06666666666666667,
+      "test_runtime": 0.2129,
+      "test_samples_per_second": 1408.856,
+      "test_steps_per_second": 178.455,
+      "epoch": 1.0
+    }
+  },
+  "regression": {
+    "test_metrics": {
+      "test_loss": 41.049713134765625,
+      "test_mae": 5.725390911102295,
+      "test_rmse": 6.40700470735494,
+      "test_runtime": 0.2451,
+      "test_samples_per_second": 1224.106,
+      "test_steps_per_second": 155.053,
+      "epoch": 1.0
+    },
+    "mae": 5.725391042944045,
+    "rmse": 6.407005004608966,
+    "pearson": NaN,
+    "spearman": 0.0
+  },
+  "artifacts": {
+    "classifier_dir": "d:\\Arabinda\\AI Inv PR2\\backend\\ml-service\\artifacts-smoke\\classifier",
+    "regressor_dir": "d:\\Arabinda\\AI Inv PR2\\backend\\ml-service\\artifacts-smoke\\regressor",
+    "confusion_matrix_csv": "d:\\Arabinda\\AI Inv PR2\\backend\\ml-service\\artifacts-smoke\\confusion_matrix.csv"
+  }
+}

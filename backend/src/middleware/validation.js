@@ -7,24 +7,27 @@ const validateRegistration = [
     .withMessage('Please provide a valid email address'),
   
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
-    .withMessage('Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'),
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters long'),
+  
+  // Accept either 'name' OR 'firstName' + 'lastName'
+  body('name')
+    .optional()
+    .isLength({ min: 2, max: 100 })
+    .trim()
+    .withMessage('Name must be between 2 and 100 characters'),
   
   body('firstName')
+    .optional()
     .isLength({ min: 2, max: 50 })
     .trim()
-    .withMessage('First name must be between 2 and 50 characters')
-    .matches(/^[a-zA-Z\s]+$/)
-    .withMessage('First name can only contain letters and spaces'),
+    .withMessage('First name must be between 2 and 50 characters'),
   
   body('lastName')
+    .optional()
     .isLength({ min: 2, max: 50 })
     .trim()
-    .withMessage('Last name must be between 2 and 50 characters')
-    .matches(/^[a-zA-Z\s]+$/)
-    .withMessage('Last name can only contain letters and spaces'),
+    .withMessage('Last name must be between 2 and 50 characters'),
 ];
 
 const validateLogin = [

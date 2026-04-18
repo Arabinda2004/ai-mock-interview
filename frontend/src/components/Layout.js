@@ -73,7 +73,7 @@ const Layout = ({ children }) => {
                 }`}
               >
                 <Settings className="w-5 h-5" />
-                <span>Settings</span>
+                <span>Profile</span>
               </Link>
             </nav>
 

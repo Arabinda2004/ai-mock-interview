@@ -178,7 +178,7 @@ const Register = () => {
                     type="text"
                     required
                     className="input-field-icon pl-10"
-                    placeholder="John"
+                    placeholder="Test"
                     value={formData.firstName}
                     onChange={handleChange}
                   />
@@ -199,7 +199,7 @@ const Register = () => {
                     type="text"
                     required
                     className="input-field-icon pl-10"
-                    placeholder="Doe"
+                    placeholder="User"
                     value={formData.lastName}
                     onChange={handleChange}
                   />
@@ -223,7 +223,7 @@ const Register = () => {
                   autoComplete="email"
                   required
                   className="input-field-icon pl-10"
-                  placeholder="john@example.com"
+                  placeholder="user@test.com"
                   value={formData.email}
                   onChange={handleChange}
                 />

@@ -21,29 +21,106 @@ const Results = () => {
   const location = useLocation();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showAllQuestions, setShowAllQuestions] = useState(false);
+  const [showAllQuestions, setShowAllQuestions] = useState(true);
+  const [error, setError] = useState(null);
+  const [shouldRedirect, setShouldRedirect] = useState(false);
+
+  useEffect(() => {
+    // Check if we should redirect immediately
+    if (shouldRedirect) {
+      console.log('⚠️ Redirecting to dashboard...');
+      navigate('/dashboard', { replace: true });
+    }
+  }, [shouldRedirect, navigate]);
 
   useEffect(() => {
     loadResults();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
-  const loadResults = () => {
+  const loadResults = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      setShouldRedirect(false);
+
       // Get results from location state or localStorage
       const resultData = location.state?.results || interviewService.getLastResults();
       
+      console.log('📊 Results page - received data:', resultData);
+      console.log('📊 Location state:', location.state);
+      
+      // Log the structure to help debug
+      if (resultData) {
+        console.log('📊 Data structure:', {
+          hasQuestions: !!resultData.questions,
+          questionsLength: resultData.questions?.length,
+          hasAnswers: !!resultData.answers,
+          answersLength: resultData.answers?.length,
+          hasQuestionResults: !!resultData.questionResults,
+          sampleQuestion: resultData.questions?.[0]
+        });
+      }
+      
       if (!resultData) {
-        navigate('/dashboard');
+        console.log('❌ No result data found, redirecting to dashboard');
+        console.log('❌ Location:', location);
+        console.log('❌ Location state:', location.state);
+        setLoading(false);
+        setShouldRedirect(true);
         return;
       }
 
-      setResults(resultData);
+      // Check if we have an interviewId (either directly or as id field)
+      const interviewId = resultData.interviewId || resultData.id;
       
-      // Save to history
-      saveToHistory(resultData);
+      console.log('🔍 Interview ID:', interviewId);
+      
+      if (!interviewId) {
+        console.log('❌ No interview ID found in data');
+        setError('Interview ID not found. Unable to load details.');
+        setLoading(false);
+        return;
+      }
+
+      // If we have an interviewId but incomplete data (no questions), fetch full details from API
+      const hasQuestions = resultData.questions && Array.isArray(resultData.questions) && resultData.questions.length > 0;
+      console.log('🔍 Has questions?', hasQuestions, 'Questions:', resultData.questions);
+      
+      if (!hasQuestions) {
+        console.log('📡 Fetching complete interview details from API for interview:', interviewId);
+        
+        try {
+          const response = await interviewService.getInterviewDetails(interviewId);
+          console.log('✅ API Response:', response);
+          
+          if (response.success && response.data) {
+            console.log('✅ Setting results from API');
+            setResults(response.data);
+            saveToHistory(response.data);
+          } else {
+            console.log('⚠️ API returned success=false, using fallback data');
+            // Fallback to whatever data we have
+            setResults(resultData);
+            saveToHistory(resultData);
+          }
+        } catch (apiError) {
+          console.error('❌ Error fetching interview details from API:', apiError);
+          // Fallback to the data we have (it might have some info even without questions)
+          setResults(resultData);
+          saveToHistory(resultData);
+        }
+      } else {
+        console.log('✅ Using complete data from location state');
+        // We have complete data, use it directly
+        setResults(resultData);
+        saveToHistory(resultData);
+      }
+      
       setLoading(false);
     } catch (error) {
-      console.error('Error loading results:', error);
+      console.error('❌ Error loading results:', error);
+      setError('Failed to load interview results. Please try again.');
       setLoading(false);
     }
   };
@@ -106,15 +183,96 @@ const Results = () => {
   if (loading || !results) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading interview results...</p>
+        </div>
       </div>
     );
   }
 
-  const totalQuestions = results.totalQuestions || 0;
-  const answeredQuestions = results.answeredQuestions || 0;
-  const overallScore = results.overallScore || 0;
-  const timeTaken = results.timeTaken || '0 min';
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-600 mx-auto mb-4" />
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn-primary px-6 py-3"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const totalQuestions = results.totalQuestions || results.questions?.length || 0;
+  const answeredQuestions = results.answeredQuestions || results.questions?.filter(q => q.answer || q.userAnswer).length || 0;
+  const overallScore = results.overallScore || results.score || 0;
+  const timeTaken = results.timeTaken ? results.timeTaken : (results.actualDuration ? `${results.actualDuration} min` : '0 min');
+
+  // Prepare question results for display - handle multiple data structures
+  let questionResults = [];
+  
+  // NEW: Check if questions have embedded evaluation data (from backend submit endpoint)
+  if (results.questions && Array.isArray(results.questions) && results.questions.length > 0) {
+    questionResults = results.questions.map((q, index) => {
+      // Check if question has answer and evaluation data
+      const hasAnswer = q.answer || q.userAnswer;
+      const evaluation = q.evaluation || q.aiReview;
+      
+      if (!hasAnswer && !evaluation) {
+        console.warn(`Question ${index + 1} has no answer or evaluation`);
+        return null;
+      }
+      
+      // Score handling: evaluation.score is already 0-100 percentage from backend
+      const score = evaluation?.score || 0;
+      
+      return {
+        question: q.questionText || q.question || 'Question not available',
+        userAnswer: q.userAnswer || q.answer || 'Not answered',
+        score: score, // Already a percentage (0-100)
+        feedback: evaluation?.feedback || 'Evaluation pending',
+        quality: evaluation?.quality || 'Not Evaluated',
+        missingPoints: evaluation?.missingPoints || evaluation?.improvements || [],
+        improvementTip: evaluation?.improvementTip || evaluation?.suggestions?.join('. ') || ''
+      };
+    }).filter(Boolean); // Remove null entries
+  }
+  // FALLBACK: Old structure with separate answers array
+  else if (results.questionResults) {
+    questionResults = results.questionResults;
+  }
+  else if (results.answers && Array.isArray(results.answers)) {
+    questionResults = results.answers.map((answer, index) => {
+      const question = results.questions?.[index];
+      if (!question) return null;
+      
+      // Score conversion: if score > 10, it's already a percentage; otherwise convert
+      const rawScore = answer.aiReview?.score || 0;
+      const maxScore = answer.aiReview?.maxScore || 10;
+      const percentageScore = rawScore > 10 ? rawScore : Math.round((rawScore / maxScore) * 100);
+      
+      return {
+        question: question.questionText || question.question || 'Question not available',
+        userAnswer: answer.userAnswer || 'Not answered',
+        score: percentageScore,
+        feedback: answer.aiReview?.feedback || 'Evaluation pending',
+        quality: answer.aiReview?.quality || 'Not Evaluated',
+        missingPoints: answer.aiReview?.missingPoints || [],
+        improvementTip: answer.aiReview?.improvementTip || ''
+      };
+    }).filter(Boolean);
+  }
+  
+  console.log('📊 Question results for display:', {
+    totalQuestions,
+    questionResultsCount: questionResults.length,
+    sampleQuestion: questionResults[0]
+  });
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -269,53 +427,129 @@ const Results = () => {
             <BarChart3 className="h-6 w-6 text-blue-600" />
             <h3 className="text-xl font-semibold text-gray-900">Detailed Question Analysis</h3>
           </div>
-          <button
-            onClick={() => setShowAllQuestions(!showAllQuestions)}
-            className="text-blue-600 hover:text-blue-700 font-medium"
-          >
-            {showAllQuestions ? 'Show Less' : 'Show All Questions'}
-          </button>
+          {questionResults.length > 3 && (
+            <button
+              onClick={() => setShowAllQuestions(!showAllQuestions)}
+              className="text-blue-600 hover:text-blue-700 font-medium"
+            >
+              {showAllQuestions ? 'Show Less' : 'Show All Questions'}
+            </button>
+          )}
         </div>
 
-        <div className="space-y-4">
-          {(results.questionResults || []).slice(0, showAllQuestions ? undefined : 3).map((qResult, index) => (
-            <div
-              key={index}
-              className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
-                      Question {index + 1}
-                    </span>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      qResult.score >= 80 ? 'bg-green-100 text-green-700' :
-                      qResult.score >= 60 ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
+        {questionResults.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">No question details available for this interview.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {questionResults.slice(0, showAllQuestions ? undefined : 3).map((qResult, index) => (
+              <div
+                key={index}
+                className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
+                        Question {index + 1}
+                      </span>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        qResult.score >= 80 ? 'bg-green-100 text-green-700' :
+                        qResult.score >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        Score: {qResult.score}%
+                      </span>
+                    </div>
+                    <p className="text-gray-900 font-medium mb-2">{qResult.question}</p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                  <p className="text-sm text-gray-600 mb-1">Your Answer:</p>
+                  <p className="text-gray-900">{qResult.userAnswer}</p>
+                </div>
+
+                <div className="bg-blue-50 rounded-lg p-3 mb-3">
+                  <p className="text-sm font-medium text-blue-900 mb-1">AI Feedback:</p>
+                  <p className="text-blue-800">{qResult.feedback}</p>
+                </div>
+
+                {qResult.quality && (
+                  <div className="mb-3">
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                      qResult.quality === 'Excellent' ? 'bg-green-100 text-green-800' :
+                      qResult.quality === 'Good' ? 'bg-blue-100 text-blue-800' :
+                      qResult.quality === 'Average' ? 'bg-yellow-100 text-yellow-800' :
+                      qResult.quality === 'Below Average' ? 'bg-orange-100 text-orange-800' :
+                      'bg-red-100 text-red-800'
                     }`}>
-                      Score: {qResult.score}%
+                      Quality: {qResult.quality}
                     </span>
                   </div>
-                  <p className="text-gray-900 font-medium mb-2">{qResult.question}</p>
-                </div>
-              </div>
+                )}
 
-              <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                <p className="text-sm text-gray-600 mb-1">Your Answer:</p>
-                <p className="text-gray-900">{qResult.userAnswer}</p>
-              </div>
+                {qResult.missingPoints && qResult.missingPoints.length > 0 && (
+                  <div className="bg-orange-50 rounded-lg p-3 mb-3">
+                    <p className="text-sm font-medium text-orange-900 mb-2">Missing Points:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      {qResult.missingPoints.map((point, i) => (
+                        <li key={i} className="text-orange-800 text-sm">{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-              {qResult.feedback && (
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <p className="text-sm text-blue-600 font-medium mb-1">AI Feedback:</p>
-                  <p className="text-gray-700 text-sm">{qResult.feedback}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+                {qResult.improvementTip && (
+                  <div className="bg-purple-50 rounded-lg p-3">
+                    <p className="text-sm font-medium text-purple-900 mb-1">💡 Improvement Tip:</p>
+                    <p className="text-purple-800 text-sm">{qResult.improvementTip}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Detailed Feedback Section */}
+      {(results.detailedFeedback || results.overallFeedback || results.results?.overallFeedback) && (
+        <div className="card">
+          <div className="flex items-center space-x-2 mb-4">
+            <BarChart3 className="h-6 w-6 text-purple-600" />
+            <h3 className="text-xl font-semibold text-gray-900">Overall Assessment</h3>
+          </div>
+          <div className="space-y-4">
+            <div className="bg-purple-50 rounded-lg p-4">
+              <p className="text-gray-800 whitespace-pre-line">
+                {results.detailedFeedback || results.overallFeedback || results.results?.overallFeedback}
+              </p>
+            </div>
+            
+            {(results.technicalAssessment || results.results?.technicalAssessment) && (
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-900 mb-2">Technical Skills</h4>
+                <p className="text-gray-700">{results.technicalAssessment || results.results?.technicalAssessment}</p>
+              </div>
+            )}
+            
+            {(results.communicationAssessment || results.results?.communicationAssessment) && (
+              <div className="bg-green-50 rounded-lg p-4">
+                <h4 className="font-semibold text-green-900 mb-2">Communication Skills</h4>
+                <p className="text-gray-700">{results.communicationAssessment || results.results?.communicationAssessment}</p>
+              </div>
+            )}
+            
+            {(results.recommendation || results.results?.recommendation) && (
+              <div className="bg-yellow-50 rounded-lg p-4">
+                <h4 className="font-semibold text-yellow-900 mb-2">Recommendation</h4>
+                <p className="text-gray-700">{results.recommendation || results.results?.recommendation}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex items-center justify-between pt-6 border-t">

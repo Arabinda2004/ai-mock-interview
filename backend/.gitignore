@@ -56,3 +56,7 @@ temp/
 
 # Redis dump file
 dump.rdb
+
+# ML service local environment and artifacts
+ml-service/.venv/
+ml-service/artifacts/

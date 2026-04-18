@@ -1,0 +1,65 @@
+{
+  "best_global_step": 175,
+  "best_metric": 0.06666666666666667,
+  "best_model_checkpoint": "d:\\Arabinda\\AI Inv PR2\\backend\\ml-service\\artifacts-smoke\\classifier\\checkpoint-175",
+  "epoch": 1.0,
+  "eval_steps": 500,
+  "global_step": 175,
+  "is_hyper_param_search": false,
+  "is_local_process_zero": true,
+  "is_world_process_zero": true,
+  "log_history": [
+    {
+      "epoch": 0.2857142857142857,
+      "grad_norm": 0.33552035689353943,
+      "learning_rate": 1.4400000000000001e-05,
+      "loss": 1.6094223022460938,
+      "step": 50
+    },
+    {
+      "epoch": 0.5714285714285714,
+      "grad_norm": 0.28551313281059265,
+      "learning_rate": 8.685714285714287e-06,
+      "loss": 1.6094546508789063,
+      "step": 100
+    },
+    {
+      "epoch": 0.8571428571428571,
+      "grad_norm": 0.37981632351875305,
+      "learning_rate": 2.9714285714285716e-06,
+      "loss": 1.6094447326660157,
+      "step": 150
+    },
+    {
+      "epoch": 1.0,
+      "eval_accuracy": 0.2,
+      "eval_f1_macro": 0.06666666666666667,
+      "eval_loss": 1.6094379425048828,
+      "eval_runtime": 0.2368,
+      "eval_samples_per_second": 1267.082,
+      "eval_steps_per_second": 160.497,
+      "step": 175
+    }
+  ],
+  "logging_steps": 50,
+  "max_steps": 175,
+  "num_input_tokens_seen": 0,
+  "num_train_epochs": 1,
+  "save_steps": 500,
+  "stateful_callbacks": {
+    "TrainerControl": {
+      "args": {
+        "should_epoch_stop": false,
+        "should_evaluate": false,
+        "should_log": false,
+        "should_save": true,
+        "should_training_stop": true
+      },
+      "attributes": {}
+    }
+  },
+  "total_flos": 121497600.0,
+  "train_batch_size": 8,
+  "trial_name": null,
+  "trial_params": null
+}

@@ -88,6 +88,14 @@ function App() {
               </ProtectedRoute>
             } />
             
+            <Route path="/results" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Results />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
             <Route path="/history" element={
               <ProtectedRoute>
                 <Layout>

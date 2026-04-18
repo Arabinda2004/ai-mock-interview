@@ -1,31 +1,36 @@
-const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/postgresql');
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 
-const Interview = sequelize.define('Interview', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
+/**
+ * Interview Schema for MongoDB
+ * Follows the architecture specification for AI Mock Interview Platform
+ */
+const interviewSchema = new mongoose.Schema({
+  interviewId: {
+    type: String,
+    default: () => uuidv4(),
+    unique: true,
+    required: true,
+    index: true
   },
   userId: {
-    type: DataTypes.UUID,
-    allowNull: false,
-    references: {
-      model: 'Users',
-      key: 'id',
-    },
+    type: String,
+    required: [true, 'User ID is required'],
+    index: true
   },
   title: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      len: [3, 200],
-    },
+    type: String,
+    required: [true, 'Title is required'],
+    trim: true,
+    minlength: [3, 'Title must be at least 3 characters'],
+    maxlength: [200, 'Title must not exceed 200 characters']
   },
-  jobRole: {
-    type: DataTypes.ENUM(
+  role: {
+    type: String,
+    required: [true, 'Role is required'],
+    enum: [
       'Full Stack Developer',
-      'Frontend Developer', 
+      'Frontend Developer',
       'Backend Developer',
       'Data Scientist',
       'DevOps Engineer',
@@ -34,111 +39,137 @@ const Interview = sequelize.define('Interview', {
       'Product Manager',
       'UI/UX Designer',
       'Other'
-    ),
-    allowNull: false,
+    ]
   },
   experienceLevel: {
-    type: DataTypes.ENUM(
+    type: String,
+    required: [true, 'Experience level is required'],
+    enum: [
       'Entry Level (0-2 years)',
-      'Mid Level (2-5 years)', 
+      'Mid Level (2-5 years)',
       'Senior Level (5-10 years)',
-      'Lead Level (10+ years)'
-    ),
-    allowNull: false,
+      'Lead Level (10+ years)',
+      // Accept short formats from frontend
+      'junior',
+      'intermediate',
+      'senior',
+      'expert'
+    ]
   },
-  selectedSkills: {
-    type: DataTypes.JSON,
-    allowNull: false,
+  skillsTargeted: {
+    type: [String],
+    required: [true, 'At least one skill must be targeted'],
     validate: {
-      isValidSkills(value) {
-        if (!Array.isArray(value) || value.length === 0) {
-          throw new Error('At least one skill must be selected');
-        }
+      validator: function (skills) {
+        return Array.isArray(skills) && skills.length > 0;
       },
-    },
-  },
-  duration: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 30,
-    validate: {
-      min: 10,
-      max: 120,
-    },
-  },
-  questionCount: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 10,
-    validate: {
-      min: 5,
-      max: 50,
-    },
+      message: 'At least one skill must be selected'
+    }
   },
   status: {
-    type: DataTypes.ENUM(
-      'created',
-      'in_progress', 
-      'completed',
-      'abandoned'
-    ),
-    defaultValue: 'created',
+    type: String,
+    enum: ['completed', 'ongoing', 'pending'],
+    default: 'pending'
+  },
+  durationMinutes: {
+    type: Number,
+    required: [true, 'Duration is required'],
+    min: [10, 'Duration must be at least 10 minutes'],
+    max: [120, 'Duration must not exceed 120 minutes'],
+    default: 30
+  },
+  aiModelUsed: {
+    type: String,
+    default: 'deberta-v3-base'
   },
   startedAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
+    type: Date,
+    default: null
   },
   completedAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
+    type: Date,
+    default: null
   },
-  overallScore: {
-    type: DataTypes.FLOAT,
-    allowNull: true,
-    validate: {
+  results: {
+    overallScore: {
+      type: Number,
       min: 0,
       max: 100,
+      default: null
     },
-  },
-  feedback: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  metadata: {
-    type: DataTypes.JSON,
-    defaultValue: {},
-  },
+    technicalScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null
+    },
+    communicationScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null
+    },
+    confidenceScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null
+    },
+    verdict: {
+      type: String,
+      default: ''
+    },
+    strengths: {
+      type: [String],
+      default: []
+    },
+    improvements: {
+      type: [String],
+      default: []
+    }
+  }
 }, {
-  indexes: [
-    {
-      fields: ['userId'],
-    },
-    {
-      fields: ['status'],
-    },
-    {
-      fields: ['jobRole'],
-    },
-    {
-      fields: ['createdAt'],
-    },
-  ],
+  timestamps: true // Automatically adds createdAt and updatedAt
 });
 
-// Instance methods
-Interview.prototype.calculateDuration = function() {
+// Indexes for faster queries
+interviewSchema.index({ userId: 1, createdAt: -1 });
+interviewSchema.index({ status: 1 });
+interviewSchema.index({ interviewId: 1 });
+
+// Instance method to calculate actual duration
+interviewSchema.methods.calculateActualDuration = function () {
   if (this.startedAt && this.completedAt) {
     return Math.round((this.completedAt - this.startedAt) / 1000 / 60); // in minutes
   }
   return null;
 };
 
-Interview.prototype.isCompleted = function() {
+// Instance method to check if interview is completed
+interviewSchema.methods.isCompleted = function () {
   return this.status === 'completed';
 };
 
-Interview.prototype.canStart = function() {
-  return this.status === 'created';
+// Instance method to check if interview can start
+interviewSchema.methods.canStart = function () {
+  return this.status === 'pending';
 };
+
+// Instance method to start interview
+interviewSchema.methods.startInterview = function () {
+  this.status = 'ongoing';
+  this.startedAt = new Date();
+};
+
+// Instance method to complete interview
+interviewSchema.methods.completeInterview = function (results) {
+  this.status = 'completed';
+  this.completedAt = new Date();
+  if (results) {
+    this.results = { ...this.results, ...results };
+  }
+};
+
+const Interview = mongoose.model('Interview', interviewSchema);
 
 module.exports = Interview;

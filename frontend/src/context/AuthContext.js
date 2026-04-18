@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
@@ -15,18 +15,48 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const hasCheckedAuth = useRef(false); // Prevent multiple auth checks
+  const isChecking = useRef(false); // Prevent concurrent checks
 
-  // Initialize auth state from localStorage
+  // Initialize auth state by checking with server (ONLY ONCE)
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('userData');
-    
-    if (token && userData) {
-      setUser(JSON.parse(userData));
-      setIsAuthenticated(true);
+    // Prevent multiple calls - handle React Strict Mode
+    if (hasCheckedAuth.current || isChecking.current) {
+      return;
     }
     
-    setLoading(false);
+    isChecking.current = true;
+    
+    const checkAuth = async () => {
+      try {
+        const result = await authAPI.getCurrentUser();
+        if (result.success && result.data.user) {
+          setUser(result.data.user);
+          setIsAuthenticated(true);
+        } else {
+          // Not logged in - this is normal
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        // User not authenticated or token expired - this is normal for logged out users
+        // Silently handle the error without logging
+        setUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
+        hasCheckedAuth.current = true;
+        isChecking.current = false;
+      }
+    };
+    
+    checkAuth();
+    
+    // Cleanup function for React Strict Mode
+    return () => {
+      // Don't reset flags on cleanup in Strict Mode
+      // The flags should persist across mounts
+    };
   }, []);
 
   const login = async (email, password) => {
@@ -35,12 +65,9 @@ export const AuthProvider = ({ children }) => {
       const result = await authAPI.login(email, password);
       
       if (result.success) {
-        const { user, tokens } = result.data;
+        const { user } = result.data;
         
-        localStorage.setItem('token', tokens.accessToken);
-        localStorage.setItem('refreshToken', tokens.refreshToken);
-        localStorage.setItem('userData', JSON.stringify(user));
-        
+        // No localStorage - data is in HTTP-only cookie
         setUser(user);
         setIsAuthenticated(true);
         
@@ -62,12 +89,9 @@ export const AuthProvider = ({ children }) => {
       const result = await authAPI.register(userData);
       
       if (result.success) {
-        const { user, tokens } = result.data;
+        const { user } = result.data;
         
-        localStorage.setItem('token', tokens.accessToken);
-        localStorage.setItem('refreshToken', tokens.refreshToken);
-        localStorage.setItem('userData', JSON.stringify(user));
-        
+        // No localStorage - data is in HTTP-only cookie
         setUser(user);
         setIsAuthenticated(true);
         
@@ -85,21 +109,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      // Call API to invalidate token on server
+      // Call API to clear HTTP-only cookie on server
       await authAPI.logout();
     } catch (error) {
       console.error('Logout API error:', error);
       // Continue with client-side logout even if server call fails
     }
     
-    // Clear local storage
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('userData');
-    
-    // Update state
+    // Clear state (no localStorage to clear)
     setUser(null);
     setIsAuthenticated(false);
+  };
+
+  const updateUser = (updatedUserData) => {
+    setUser(updatedUserData);
   };
 
   const updateProfile = async (profileData) => {
@@ -109,7 +132,6 @@ export const AuthProvider = ({ children }) => {
       
       if (result.success) {
         const updatedUser = result.data.user;
-        localStorage.setItem('userData', JSON.stringify(updatedUser));
         setUser(updatedUser);
         return { success: true, user: updatedUser };
       } else {
@@ -148,6 +170,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    updateUser,
     updateProfile,
     changePassword,
   };

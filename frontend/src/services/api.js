@@ -9,15 +9,13 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Enable sending cookies
 });
 
-// Request interceptor to add auth token
+// Request interceptor for logging and config
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    // Cookies are automatically sent with withCredentials: true
     return config;
   },
   (error) => {
@@ -31,11 +29,12 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('token');
-      localStorage.removeItem('userData');
-      window.location.href = '/login';
+    // Don't redirect to login for auth check endpoints to avoid loops
+    if (error.response?.status === 401 && !error.config.url.includes('/auth/me')) {
+      // Only redirect on 401 for protected endpoints, not auth checks
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
     }
     
     return Promise.reject({
@@ -60,6 +59,24 @@ export const authAPI = {
   login: async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password });
+      return { success: true, data: response.data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  logout: async () => {
+    try {
+      const response = await api.post('/auth/logout');
+      return { success: true, data: response.data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  getCurrentUser: async () => {
+    try {
+      const response = await api.get('/auth/me');
       return { success: true, data: response.data };
     } catch (error) {
       return { success: false, error: error.message };

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { User, Calendar, BarChart3, Clock, TrendingUp, Award, Target } from 'lucide-react';
+import interviewService from '../services/interviewService';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -14,12 +15,46 @@ const Dashboard = () => {
     thisWeek: 0
   });
   const [recentInterviews, setRecentInterviews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = () => {
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch statistics from backend API
+      const statsResponse = await interviewService.getInterviewStatistics();
+      
+      if (statsResponse.success) {
+        setStats({
+          totalInterviews: statsResponse.data.totalInterviews,
+          avgScore: statsResponse.data.avgScore,
+          highestScore: statsResponse.data.highestScore,
+          totalTime: statsResponse.data.totalTime,
+          thisWeek: statsResponse.data.thisWeek
+        });
+      }
+      
+      // Fetch recent interviews for quick view
+      const historyResponse = await interviewService.getInterviewHistory(1, 3);
+      
+      if (historyResponse.success) {
+        setRecentInterviews(historyResponse.data.interviews);
+      }
+      
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      // Fallback to localStorage if API fails
+      loadDashboardDataFromLocalStorage();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDashboardDataFromLocalStorage = () => {
     try {
       const history = JSON.parse(localStorage.getItem('interviewHistory') || '[]');
       
@@ -49,13 +84,13 @@ const Dashboard = () => {
       
       setRecentInterviews(history.slice(0, 3));
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Error loading dashboard data from localStorage:', error);
     }
   };
 
   const getFullName = () => {
-    if (user?.firstName && user?.lastName) {
-      return `${user.firstName} ${user.lastName}`;
+    if (user?.name) {
+      return `${user.name}`;
     }
     return user?.email || 'User';
   };
@@ -77,6 +112,17 @@ const Dashboard = () => {
     if (score >= 60) return 'text-yellow-600';
     return 'text-red-600';
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

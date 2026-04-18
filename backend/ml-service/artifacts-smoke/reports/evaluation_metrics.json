@@ -1,0 +1,23 @@
+{
+  "samples": 300,
+  "classification": {
+    "accuracy": 0.2,
+    "f1_macro": 0.06666666666666667,
+    "label_map": {
+      "Poor": 0,
+      "Below Average": 1,
+      "Average": 2,
+      "Good": 3,
+      "Excellent": 4
+    }
+  },
+  "regression": {
+    "mae": 5.725391042944045,
+    "rmse": 6.407005004608966,
+    "pearson": NaN,
+    "spearman": 0.0
+  },
+  "artifacts": {
+    "confusion_matrix_csv": "d:\\Arabinda\\AI Inv PR2\\backend\\ml-service\\artifacts-smoke\\reports\\confusion_matrix.csv"
+  }
+}

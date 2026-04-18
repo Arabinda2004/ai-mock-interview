@@ -1,8 +1,19 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { ArrowRight, Brain, Video, BarChart3, Shield } from 'lucide-react';
 
 const Landing = () => {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  // Redirect to dashboard if already authenticated
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}

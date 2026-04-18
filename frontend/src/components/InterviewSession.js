@@ -47,6 +47,8 @@ const InterviewSession = () => {
   const sessionTimerRef = useRef(null);
   const questionTimerRef = useRef(null);
   const speechSynthesisRef = useRef(null);
+  const sessionStartTimeRef = useRef(null);
+  const questionStartTimeRef = useRef(null);
 
   // Initialize interview session
   useEffect(() => {
@@ -59,40 +61,91 @@ const InterviewSession = () => {
         
         if (!interviewData && location.state?.interview) {
           interviewData = location.state.interview;
+          // Save to localStorage for page refresh
+          localStorage.setItem('currentInterview', JSON.stringify(interviewData));
         }
         
         if (!interviewData) {
           // No interview data, redirect to setup
+          console.error('❌ No interview data found');
           navigate('/interview-setup');
           return;
         }
 
+        console.log('📋 Interview data loaded:', interviewData);
         setInterview(interviewData);
         
-        // Get questions
-        let questionsData = interviewService.getCurrentQuestions();
-        if (!questionsData && interviewData.questions) {
+        // Get questions - they might be in different places depending on the response
+        let questionsData = null;
+        
+        // Try different locations for questions
+        if (interviewData.questions) {
           questionsData = interviewData.questions;
+          console.log('✅ Found questions in interviewData.questions');
+        } else if (location.state?.interview?.questions) {
+          questionsData = location.state.interview.questions;
+          console.log('✅ Found questions in location.state.interview.questions');
+        } else {
+          questionsData = interviewService.getCurrentQuestions();
+          console.log('✅ Found questions from interviewService');
         }
         
+        console.log('📝 Questions data:', questionsData);
+        console.log('📊 Number of questions:', questionsData?.length || 0);
+        
         if (!questionsData || questionsData.length === 0) {
-          throw new Error('No questions available');
+          console.error('❌ No questions found in interview data');
+          console.error('📋 Interview data structure:', JSON.stringify(interviewData, null, 2));
+          throw new Error('No questions available for this interview. The question generation may have failed. Please try setting up the interview again.');
         }
 
-        setQuestions(questionsData);
+        console.log('✅ Loaded', questionsData.length, 'questions');
+
+        // Normalize questions - ensure they have all required fields
+        const normalizedQuestions = questionsData.map((q, index) => {
+          // Support both 'question' and 'questionText' fields
+          const questionText = q.question || q.questionText || 'Question text not available';
+          return {
+            ...q,
+            id: q.id || q.questionId || `q_${index + 1}`,
+            question: questionText,
+            questionText: questionText,
+            category: q.category || q.questionCategory || 'General',
+            difficulty: q.difficulty || 'Medium',
+            type: q.type || 'general',
+            hints: q.hints || ['Take your time', 'Think through your answer'],
+            evaluationCriteria: q.evaluationCriteria || ['Knowledge', 'Communication']
+          };
+        });
+
+        console.log('✅ Normalized questions:', normalizedQuestions);
+        setQuestions(normalizedQuestions);
         
         // Load saved progress if any
         const savedProgress = interviewService.getSavedProgress();
+        let startTime = Date.now();
+
         if (savedProgress) {
           setAnswers(savedProgress.answers || {});
           setEvaluations(savedProgress.evaluations || {});
           setCurrentQuestionIndex(savedProgress.currentQuestionIndex || 0);
+          if (savedProgress.sessionStartTime) {
+            startTime = savedProgress.sessionStartTime;
+          }
+        } else {
+          // Save initial progress
+          interviewService.saveProgress({
+            answers: {},
+            currentQuestionIndex: 0,
+            sessionStartTime: startTime
+          });
         }
 
         // Start session
-        const now = Date.now();
-        setSessionStartTime(now);
-        setQuestionStartTime(now);
+        setSessionStartTime(startTime);
+        sessionStartTimeRef.current = startTime;
+        setQuestionStartTime(Date.now());
+        questionStartTimeRef.current = Date.now();
         
         // Start timers
         startSessionTimer();
@@ -124,8 +177,8 @@ const InterviewSession = () => {
     if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
     
     sessionTimerRef.current = setInterval(() => {
-      if (sessionStartTime) {
-        setSessionElapsed(Date.now() - sessionStartTime);
+      if (sessionStartTimeRef.current) {
+        setSessionElapsed(Date.now() - sessionStartTimeRef.current);
       }
     }, 1000);
   };
@@ -135,6 +188,7 @@ const InterviewSession = () => {
     
     const now = Date.now();
     setQuestionStartTime(now);
+    questionStartTimeRef.current = now;
     
     questionTimerRef.current = setInterval(() => {
       setQuestionElapsed(Date.now() - now);
@@ -154,7 +208,13 @@ const InterviewSession = () => {
     
     try {
       speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(question.question);
+      const questionText = question.question || question.questionText || '';
+      if (!questionText) {
+        console.warn('No question text to read aloud');
+        return;
+      }
+      
+      const utterance = new SpeechSynthesisUtterance(questionText);
       utterance.rate = 0.9;
       utterance.pitch = 1;
       utterance.volume = 0.8;
@@ -192,57 +252,59 @@ const InterviewSession = () => {
       return;
     }
 
+    // Validate questions are loaded
+    if (!questions || questions.length === 0) {
+      setError('Questions not loaded. Please refresh and try again.');
+      return;
+    }
+
+    const currentQuestion = questions[currentQuestionIndex];
+    
+    if (!currentQuestion) {
+      setError('Invalid question. Please refresh and try again.');
+      console.error('Current question not found:', { currentQuestionIndex, questionsLength: questions.length });
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       stopQuestionTimer();
 
       const answerData = {
-        questionId: questions[currentQuestionIndex].id,
+        questionId: currentQuestion.id || currentQuestion.questionId || `q_${currentQuestionIndex}`,
+        questionText: currentQuestion.question || currentQuestion.questionText,
         answer: currentAnswer.trim(),
         timeSpent: Math.floor(questionElapsed / 1000)
       };
 
-      // Submit answer for evaluation
-      const evaluationResponse = await interviewService.submitAnswer(
-        interview.interviewId,
-        answerData
-      );
-
-      if (evaluationResponse.success) {
-        // Store answer and evaluation
-        const newAnswers = {
-          ...answers,
-          [currentQuestionIndex]: {
-            ...answerData,
-            submittedAt: new Date().toISOString()
-          }
-        };
-        
-        const newEvaluations = {
-          ...evaluations,
-          [currentQuestionIndex]: evaluationResponse.data.evaluation
-        };
-
-        setAnswers(newAnswers);
-        setEvaluations(newEvaluations);
-
-        // Save progress
-        interviewService.saveProgress({
-          answers: newAnswers,
-          evaluations: newEvaluations,
-          currentQuestionIndex: currentQuestionIndex + 1
-        });
-
-        // Move to next question or complete interview
-        if (currentQuestionIndex < questions.length - 1) {
-          nextQuestion();
-        } else {
-          completeInterview();
+      // Store answer locally (don't evaluate yet)
+      const newAnswers = {
+        ...answers,
+        [currentQuestionIndex]: {
+          ...answerData,
+          submittedAt: new Date().toISOString()
         }
+      };
+
+      setAnswers(newAnswers);
+
+      // Save progress
+      interviewService.saveProgress({
+        answers: newAnswers,
+        currentQuestionIndex: currentQuestionIndex + 1,
+        sessionStartTime: sessionStartTimeRef.current
+      });
+
+      // Move to next question or complete interview
+      if (currentQuestionIndex < questions.length - 1) {
+        nextQuestion();
+      } else {
+        // All questions answered, submit for evaluation
+        completeInterview(newAnswers);
       }
     } catch (error) {
       console.error('Error submitting answer:', error);
-      setError('Failed to submit answer. Please try again.');
+      setError('Failed to save answer. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -275,57 +337,107 @@ const InterviewSession = () => {
     }
   };
 
-  const completeInterview = () => {
-    // Stop all timers
-    if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
-    if (questionTimerRef.current) clearInterval(questionTimerRef.current);
-    
-    // Calculate results
-    const answeredQuestions = Object.keys(answers).length;
-    const evaluationScores = Object.values(evaluations).map(e => e?.score || 0);
-    const overallScore = evaluationScores.length > 0 
-      ? Math.round(evaluationScores.reduce((a, b) => a + b, 0) / evaluationScores.length)
-      : 0;
-    
-    // Prepare question results
-    const questionResults = questions.map((q, idx) => ({
-      question: q.question,
-      userAnswer: answers[idx]?.answer || 'No answer provided',
-      score: evaluations[idx]?.score || 0,
-      feedback: evaluations[idx]?.feedback || 'No feedback available'
-    }));
-    
-    const results = {
-      jobRole: interview?.setup?.jobRole || 'Interview',
-      interviewType: interview?.setup?.interviewType || 'mixed',
-      difficulty: interview?.setup?.difficulty || 'medium',
-      totalQuestions: questions.length,
-      answeredQuestions,
-      overallScore,
-      timeTaken: formatTime(sessionElapsed),
-      avgResponseTime: answeredQuestions > 0 
-        ? formatTime(sessionElapsed / answeredQuestions)
-        : '0:00',
-      accuracyRate: overallScore,
-      confidenceLevel: overallScore >= 80 ? 'High' : overallScore >= 60 ? 'Medium' : 'Needs Work',
-      strengths: evaluations[0]?.strengths || [
-        'Clear communication',
-        'Good problem-solving approach',
-        'Technical knowledge demonstrated'
-      ],
-      improvements: evaluations[0]?.improvements || [
-        'Provide more detailed examples',
-        'Consider edge cases',
-        'Improve code optimization'
-      ],
-      questionResults
-    };
-    
-    // Save results to localStorage for Results page
-    interviewService.saveResults(results);
-    
-    // Navigate to results
-    navigate('/results', { state: { results } });
+  const completeInterview = async (finalAnswers = null) => {
+    try {
+      // Stop all timers
+      if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
+      if (questionTimerRef.current) clearInterval(questionTimerRef.current);
+      
+      const answersToSubmit = finalAnswers || answers;
+      
+      // Show loading state
+      setIsSubmitting(true);
+      
+      // Prepare answers array for submission
+      const answersArray = questions.map((q, idx) => ({
+        questionId: q.id || q.questionId,
+        questionText: q.question || q.questionText,
+        answer: answersToSubmit[idx]?.answer || '',
+        timeSpent: answersToSubmit[idx]?.timeSpent || 0
+      }));
+      
+      // Ensure we have interview setup data
+      const interviewSetup = interview.setup || {
+        jobRole: interview.jobRole || interview.role || 'Interview',
+        skills: interview.skills || interview.skillsTargeted || [],
+        experienceLevel: interview.experienceLevel || 'mid-level',
+        interviewType: interview.interviewType || 'mixed',
+        difficulty: interview.difficulty || 'medium'
+      };
+      
+      console.log('🔧 Interview setup:', interviewSetup);
+      
+      // Submit all answers for evaluation
+      console.log('📤 Submitting interview:', {
+        interviewId: interview.interviewId,
+        questionsCount: questions.length,
+        answersCount: answersArray.filter(a => a.answer).length
+      });
+      
+      const evaluationResponse = await interviewService.submitAllAnswers(
+        interview.interviewId,
+        questions,
+        answersArray,
+        interviewSetup
+      );
+      
+      console.log('✅ Evaluation response:', evaluationResponse);
+      
+      if (!evaluationResponse.success) {
+        throw new Error(evaluationResponse.message || 'Failed to evaluate interview');
+      }
+      
+      // Backend now returns complete results with questions and evaluations
+      const results = evaluationResponse.data;
+      
+      if (!results || !results.interviewId) {
+        console.error('❌ Invalid results structure:', results);
+        throw new Error('Invalid response from server');
+      }
+      
+      // Enhance with timing data
+      results.timeTaken = formatTime(sessionElapsed);
+      results.avgResponseTime = results.answeredQuestions > 0 
+        ? formatTime(sessionElapsed / results.answeredQuestions)
+        : '0:00';
+      
+      console.log('📊 Complete results:', results);
+      
+      // Save results to localStorage for Results page
+      interviewService.saveResults(results);
+      
+      // Clear current interview session
+      interviewService.clearCurrentSession();
+      
+      // Navigate to results with complete data
+      navigate('/results', { state: { results }, replace: true });
+      
+    } catch (error) {
+      console.error('❌ Error completing interview:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        interviewId: interview?.interviewId,
+        answersSubmitted: Object.keys(answers).length,
+        apiUrl: interviewService.baseURL
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to complete interview.';
+      
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        errorMessage = 'Network error: Could not connect to server. Please check if the backend is running.';
+      } else if (error.message.includes('401') || error.message.includes('Authentication')) {
+        errorMessage = 'Authentication expired. Please refresh the page and log in again.';
+      } else if (error.message.includes('500')) {
+        errorMessage = 'Server error occurred. Please try again or contact support.';
+      } else if (error.message) {
+        errorMessage = `Failed to complete interview: ${error.message}`;
+      }
+      
+      setError(`${errorMessage} Your answers have been saved locally.`);
+      setIsSubmitting(false);
+    }
   };
 
   // Utility functions

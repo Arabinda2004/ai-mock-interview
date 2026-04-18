@@ -106,7 +106,8 @@ Required variables:
 - \`NODE_ENV=development\`
 - \`PORT=5000\`
 - \`JWT_SECRET=your_super_secret_jwt_key\`
-- \`GEMINI_API_KEY=your_gemini_api_key\` (for AI features)
+- \`ML_SERVICE_URL=http://localhost:8000\` (for AI evaluation)
+- \`ML_MODEL_NAME=deberta-v3-base\`
 
 ## Frontend Setup
 
@@ -123,16 +124,26 @@ Required variables:
 
 The frontend will start on http://localhost:3000
 
-## Google Gemini API Setup
+## FastAPI ML Service Setup
 
-1. **Get API Key:**
-   - Go to https://makersuite.google.com/app/apikey
-   - Create a new API key
-   - Copy the key
-
-2. **Update .env file:**
+1. **Create Python virtual environment and install dependencies:**
+   \`\`\`bash
+   cd backend/ml-service
+   python -m venv .venv
+   .venv\\Scripts\\activate
+   pip install -r requirements.txt
    \`\`\`
-   GEMINI_API_KEY=your_api_key_here
+
+2. **Start ML service:**
+   \`\`\`bash
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   \`\`\`
+
+3. **Update backend .env file:**
+   \`\`\`
+   ML_SERVICE_URL=http://localhost:8000
+   ML_SERVICE_TIMEOUT_MS=3500
+   ML_MODEL_NAME=deberta-v3-base
    \`\`\`
 
 ## Testing the Setup

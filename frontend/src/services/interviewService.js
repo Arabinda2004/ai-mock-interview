@@ -10,13 +10,11 @@ class InterviewService {
   }
 
   /**
-   * Get authentication headers with JWT token
+   * Get base headers for API calls
    */
   getAuthHeaders() {
-    const token = localStorage.getItem('token');
     return {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` })
+      'Content-Type': 'application/json'
     };
   }
 
@@ -40,8 +38,6 @@ class InterviewService {
    */
   async generateQuestions(interviewSetup) {
     try {
-      const token = localStorage.getItem('token');
-      console.log('🔐 Token check:', token ? 'Token exists' : 'No token found');
       console.log('📝 Interview setup:', interviewSetup);
       
       const headers = this.getAuthHeaders();
@@ -50,6 +46,7 @@ class InterviewService {
       const response = await fetch(`${this.baseURL}/interviews/questions/generate`, {
         method: 'POST',
         headers: headers,
+        credentials: 'include', // Include cookies
         body: JSON.stringify(interviewSetup)
       });
 
@@ -95,6 +92,7 @@ class InterviewService {
       const response = await fetch(`${this.baseURL}/interviews/${interviewId}/answer`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
+        credentials: 'include', // Include cookies
         body: JSON.stringify(answerData)
       });
 
@@ -102,6 +100,66 @@ class InterviewService {
     } catch (error) {
       console.error('Error submitting answer:', error);
       throw new Error('Failed to submit answer. Please try again.');
+    }
+  }
+
+  /**
+   * Submit all answers at once for comprehensive evaluation
+   * @param {string} interviewId - Interview session ID
+   * @param {Array} questions - All interview questions
+   * @param {Array} answers - All user answers
+   * @param {Object} interviewSetup - Interview configuration
+   * @returns {Promise<Object>} Comprehensive evaluation results
+   */
+  async submitAllAnswers(interviewId, questions, answers, interviewSetup) {
+    try {
+      console.log('📤 Submitting to:', `${this.baseURL}/interviews/${interviewId}/submit`);
+      console.log('📤 Payload:', {
+        interviewId,
+        questionsCount: questions.length,
+        answersCount: answers.length,
+        hasInterviewSetup: !!interviewSetup
+      });
+      
+      const response = await fetch(`${this.baseURL}/interviews/${interviewId}/submit`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        credentials: 'include', // Include cookies
+        body: JSON.stringify({
+          questions,
+          answers,
+          interviewSetup
+        })
+      });
+
+      console.log('📥 Submit response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Submit failed:', errorText);
+        
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please log in again.');
+        } else if (response.status === 404) {
+          throw new Error('Interview not found. It may have been deleted.');
+        } else if (response.status === 500) {
+          throw new Error('Server error. Please try again later.');
+        } else {
+          throw new Error(`Failed to submit interview (Status: ${response.status})`);
+        }
+      }
+      
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('❌ Error submitting all answers:', error);
+      
+      // Re-throw with more context if it's a network error
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new Error('Network error: Could not connect to the server. Please check if the backend is running on ' + this.baseURL);
+      }
+      
+      // Otherwise throw the original or enhanced error
+      throw error;
     }
   }
 
@@ -116,6 +174,7 @@ class InterviewService {
       const response = await fetch(`${this.baseURL}/interviews/${interviewId}/followup`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
+        credentials: 'include', // Include cookies
         body: JSON.stringify(followupData)
       });
 
@@ -135,7 +194,8 @@ class InterviewService {
   async getInterviewSummary(interviewId) {
     try {
       const response = await fetch(`${this.baseURL}/interviews/${interviewId}/summary`, {
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
+        credentials: 'include' // Include cookies
       });
 
       return await this.handleResponse(response);
@@ -149,14 +209,16 @@ class InterviewService {
    * Get user's interview history with pagination
    * @param {number} page - Page number (default: 1)
    * @param {number} limit - Results per page (default: 10)
+   * @param {string} status - Filter by status (default: 'all')
    * @returns {Promise<Object>} Interview history and pagination info
    */
-  async getInterviewHistory(page = 1, limit = 10) {
+  async getInterviewHistory(page = 1, limit = 10, status = 'all') {
     try {
       const response = await fetch(
-        `${this.baseURL}/interviews/history?page=${page}&limit=${limit}`,
+        `${this.baseURL}/interviews/history?page=${page}&limit=${limit}&status=${status}`,
         {
-          headers: this.getAuthHeaders()
+          headers: this.getAuthHeaders(),
+          credentials: 'include' // Include cookies
         }
       );
 
@@ -164,6 +226,57 @@ class InterviewService {
     } catch (error) {
       console.error('Error fetching interview history:', error);
       throw new Error('Failed to load interview history. Please try again.');
+    }
+  }
+
+  /**
+   * Get individual interview details by ID
+   * @param {string} interviewId - Interview ID
+   * @returns {Promise<Object>} Interview details including questions and results
+   */
+  async getInterviewDetails(interviewId) {
+    try {
+      if (!interviewId) {
+        throw new Error('Interview ID is required');
+      }
+
+      console.log('📝 Fetching interview details for:', interviewId);
+
+      const response = await fetch(`${this.baseURL}/interviews/${interviewId}`, {
+        headers: this.getAuthHeaders(),
+        credentials: 'include' // Include cookies
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch interview details');
+      }
+
+      const result = await response.json();
+      console.log('✅ Interview details fetched:', result);
+
+      return result;
+    } catch (error) {
+      console.error('❌ Error fetching interview details:', error);
+      throw new Error('Failed to load interview details. Please try again.');
+    }
+  }
+
+  /**
+   * Get user's interview statistics for dashboard
+   * @returns {Promise<Object>} Interview statistics
+   */
+  async getInterviewStatistics() {
+    try {
+      const response = await fetch(`${this.baseURL}/interviews/statistics`, {
+        headers: this.getAuthHeaders(),
+        credentials: 'include' // Include cookies
+      });
+
+      return await this.handleResponse(response);
+    } catch (error) {
+      console.error('Error fetching interview statistics:', error);
+      throw new Error('Failed to load interview statistics. Please try again.');
     }
   }
 
@@ -176,7 +289,8 @@ class InterviewService {
     try {
       const response = await fetch(`${this.baseURL}/interviews/${interviewId}`, {
         method: 'DELETE',
-        headers: this.getAuthHeaders()
+        headers: this.getAuthHeaders(),
+        credentials: 'include' // Include cookies
       });
 
       return await this.handleResponse(response);

@@ -14,6 +14,7 @@ import {
   BarChart3,
   Award
 } from 'lucide-react';
+import interviewService from '../services/interviewService';
 
 const History = () => {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ const History = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalInterviews: 0,
     avgScore: 0,
@@ -37,13 +39,35 @@ const History = () => {
     filterAndSortHistory();
   }, [history, searchTerm, filterType, sortBy]);
 
-  const loadHistory = () => {
+  const loadHistory = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch interview history from backend API
+      const response = await interviewService.getInterviewHistory(1, 100); // Get first 100 interviews
+      
+      if (response.success) {
+        const interviews = response.data.interviews;
+        setHistory(interviews);
+        calculateStats(interviews);
+      }
+      
+    } catch (error) {
+      console.error('Error loading history from API:', error);
+      // Fallback to localStorage if API fails
+      loadHistoryFromLocalStorage();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadHistoryFromLocalStorage = () => {
     try {
       const savedHistory = JSON.parse(localStorage.getItem('interviewHistory') || '[]');
       setHistory(savedHistory);
       calculateStats(savedHistory);
     } catch (error) {
-      console.error('Error loading history:', error);
+      console.error('Error loading history from localStorage:', error);
     }
   };
 
@@ -128,6 +152,8 @@ const History = () => {
   };
 
   const viewDetails = (interview) => {
+    console.log('🔍 History: Navigating to results with interview data:', interview);
+    console.log('🔍 History: Interview ID:', interview.interviewId || interview.id);
     navigate('/results', { state: { results: interview } });
   };
 
@@ -153,6 +179,17 @@ const History = () => {
       minute: '2-digit'
     });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your interview history...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
