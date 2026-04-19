@@ -49,7 +49,10 @@ const submitAnswer = async (req, res) => {
 
       const evaluation = await mlService.evaluateAnswerArchitecture({
         question: question.questionText,
-        answer: userAnswer
+        answer: userAnswer,
+        questionContext: {
+          expectedConcepts: Array.isArray(question.expectedConcepts) ? question.expectedConcepts : []
+        }
       });
 
       // Validate evaluation response

@@ -2,7 +2,15 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  Lock,
+  ShieldCheck,
+  Sparkles,
+  Mail,
+  BrainCircuit,
+} from 'lucide-react';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -11,7 +19,7 @@ const Login = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -35,7 +43,7 @@ const Login = () => {
 
     try {
       const result = await login(formData.email, formData.password);
-      
+
       if (result.success) {
         toast.success('Welcome back!');
         navigate('/dashboard');
@@ -50,130 +58,154 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center space-x-2 mb-6">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">AI</span>
-            </div>
-            <span className="text-2xl font-semibold text-gray-900">
-              Interview Practice
-            </span>
-          </Link>
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h2>
-          <p className="text-gray-600">Sign in to continue your interview practice</p>
-        </div>
+    <div className="min-h-screen bg-slate-200 text-slate-900">
+      <div className="flex min-h-screen flex-col">
+        <main className="flex flex-1 flex-col xl:grid xl:grid-cols-[1.05fr,1fr]">
+          <section className="relative hidden overflow-hidden bg-gradient-to-b from-slate-900 via-blue-950 to-blue-900 xl:block">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.3),transparent_45%),radial-gradient(circle_at_80%_75%,rgba(14,165,233,0.25),transparent_40%)]" />
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-950/80 via-blue-900/70 to-blue-800/60" />
+            <div className="absolute inset-y-0 left-24 w-px bg-white/10" />
+            <div className="absolute inset-y-0 left-48 w-px bg-white/5" />
 
-        {/* Login Form */}
-        <div className="bg-white rounded-xl shadow-soft p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email Field */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email address
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="input-field-icon pl-10"
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChange={handleChange}
-                />
-              </div>
-            </div>
-
-            {/* Password Field */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  required
-                  className="input-field-icon pl-10 pr-10"
-                  placeholder="Enter your password"
-                  value={formData.password}
-                  onChange={handleChange}
-                />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                  <button
-                    type="button"
-                    className="text-gray-400 hover:text-gray-600"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="text-sm">
-                <Link
-                  to="/forgot-password"
-                  className="text-blue-600 hover:text-blue-500"
-                >
-                  Forgot your password?
-                </Link>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary flex items-center justify-center"
-            >
-              {loading ? (
-                <div className="spinner"></div>
-              ) : (
-                'Sign in'
-              )}
-            </button>
-          </form>
-
-          {/* Register Link */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link
-                to="/register"
-                className="text-blue-600 hover:text-blue-500 font-medium"
-              >
-                Sign up for free
+            <div className="relative flex h-full flex-col justify-center px-12 py-16 text-white lg:px-16">
+              <Link to="/" className="mb-12 inline-flex w-fit items-center gap-2 text-sm font-semibold uppercase tracking-[0.22em] text-blue-100/90">
+                <span className="rounded-md border border-blue-200/40 bg-white/10 px-2 py-1 text-[10px] tracking-[0.25em]">
+                  AI
+                </span>
+                Interview Platform
               </Link>
-            </p>
-          </div>
-        </div>
 
-        {/* Demo Account Info */}
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-sm text-blue-800 text-center">
-            <strong>Demo:</strong> Use any email and password to login
-          </p>
-        </div>
+              <div className="max-w-xl animate-slide-up">
+                <h1 className="text-5xl font-semibold leading-tight">
+                  Pick up where
+                  <br />
+                  you left off.
+                </h1>
+                <p className="mt-6 max-w-lg text-lg text-blue-100/90">
+                  Continue your interview preparation with AI-driven simulations, detailed score trends, and role-specific coaching.
+                </p>
+              </div>
+
+              <div className="mt-12 grid max-w-2xl gap-4 sm:grid-cols-2">
+                <article className="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-sm animate-fade-in">
+                  <Sparkles className="h-5 w-5 text-cyan-200" />
+                  <h3 className="mt-4 text-base font-semibold">Smart practice loops</h3>
+                  <p className="mt-2 text-sm text-blue-100/85">Adaptive follow-up questions tailored to your strengths and blind spots.</p>
+                </article>
+
+                <article className="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-sm animate-fade-in">
+                  <ShieldCheck className="h-5 w-5 text-emerald-200" />
+                  <h3 className="mt-4 text-base font-semibold">Secure by default</h3>
+                  <p className="mt-2 text-sm text-blue-100/85">Your data is protected with encrypted sessions and private analytics.</p>
+                </article>
+              </div>
+
+              <div className="mt-6 inline-flex w-fit items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs text-blue-100/85">
+                <BrainCircuit className="h-3.5 w-3.5" />
+                AI scoring + personalized improvement guidance
+              </div>
+            </div>
+          </section>
+
+          <section className="flex items-center justify-center bg-slate-100 px-4 py-8 sm:px-8 sm:py-10 lg:px-12">
+            <div className="w-full max-w-xl animate-fade-in rounded-3xl border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
+              <div className="mb-8">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Welcome Back</p>
+                <h2 className="text-3xl font-semibold text-slate-900">Sign in to your account</h2>
+                <p className="mt-2 text-sm text-slate-600">Continue your path to interview mastery.</p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label htmlFor="email" className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+                      <Mail className="h-4 w-4" />
+                    </span>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="jane.doe@company.com"
+                      value={formData.email}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label htmlFor="password" className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Password
+                    </label>
+                    <span className="text-[11px] text-slate-400">Use your existing credentials</span>
+                  </div>
+
+                  <div className="relative">
+                    <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
+                      <Lock className="h-4 w-4" />
+                    </span>
+                    <input
+                      id="password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      required
+                      className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="Enter your password"
+                      value={formData.password}
+                      onChange={handleChange}
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-3 flex items-center text-slate-400 transition hover:text-slate-600"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-1 flex h-12 w-full items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {loading ? <div className="spinner" /> : 'Sign In'}
+                </button>
+              </form>
+
+              <p className="mt-6 text-center text-sm text-slate-600">
+                New here?{' '}
+                <Link to="/register" className="font-semibold text-blue-600 transition hover:text-blue-700">
+                  Create Account
+                </Link>
+              </p>
+
+              <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-center text-xs text-blue-800">
+                Demo mode is enabled in development. Use any valid email and password.
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <footer className="border-t border-slate-300 bg-slate-200 px-4 py-5 text-xs text-slate-600 sm:px-6 lg:px-10">
+          <div className="mx-auto flex w-full max-w-[1600px] flex-col items-center justify-between gap-3 sm:flex-row">
+            <p className="text-sm font-semibold tracking-wide text-slate-800">AI Interview Platform</p>
+            <nav className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+              <Link to="/privacy" className="transition hover:text-slate-900">Privacy Policy</Link>
+              <Link to="/terms" className="transition hover:text-slate-900">Terms of Service</Link>
+              <Link to="/contact" className="transition hover:text-slate-900">Contact</Link>
+            </nav>
+            <p className="text-[11px] uppercase tracking-[0.15em] text-slate-500">© 2026 AI Interview Platform</p>
+          </div>
+        </footer>
       </div>
     </div>
   );

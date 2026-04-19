@@ -1,6 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../services/api';
+import interviewService from '../services/interviewService';
+import {
+  Award,
+  Briefcase,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  Mail,
+  Phone,
+  Plus,
+  Sparkles,
+  Target,
+  Trophy,
+  UserRound,
+  X
+} from 'lucide-react';
 
 const Profile = () => {
   const { user, updateUser } = useAuth();
@@ -16,6 +32,12 @@ const Profile = () => {
     skills: []
   });
   const [newSkill, setNewSkill] = useState('');
+  const [interviewStats, setInterviewStats] = useState({
+    totalInterviews: 0,
+    avgScore: 0,
+    highestScore: 0,
+    thisWeek: 0
+  });
 
   useEffect(() => {
     if (user) {
@@ -28,6 +50,47 @@ const Profile = () => {
         skills: Array.isArray(user.skills) ? user.skills : []
       });
     }
+  }, [user]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadInterviewStats = async () => {
+      try {
+        const response = await interviewService.getInterviewStatistics();
+        if (isMounted && response?.success) {
+          setInterviewStats({
+            totalInterviews: Number(response?.data?.totalInterviews || 0),
+            avgScore: Number(response?.data?.avgScore || 0),
+            highestScore: Number(response?.data?.highestScore || 0),
+            thisWeek: Number(response?.data?.thisWeek || 0)
+          });
+        }
+      } catch (error) {
+        if (isMounted) {
+          const fallbackHistory = JSON.parse(localStorage.getItem('interviewHistory') || '[]');
+          const scores = fallbackHistory.map((item) => Number(item?.overallScore || item?.score || 0));
+          const avgScore = scores.length > 0
+            ? Math.round(scores.reduce((acc, score) => acc + score, 0) / scores.length)
+            : 0;
+
+          setInterviewStats({
+            totalInterviews: fallbackHistory.length,
+            avgScore,
+            highestScore: scores.length > 0 ? Math.max(...scores) : 0,
+            thisWeek: 0
+          });
+        }
+      }
+    };
+
+    if (user) {
+      loadInterviewStats();
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, [user]);
 
   const experienceLevels = [
@@ -157,240 +220,364 @@ const Profile = () => {
     const now = new Date();
     const diffTime = Math.abs(now - created);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays < 30) return `Joined ${diffDays} days ago`;
     if (diffDays < 365) return `Joined ${Math.floor(diffDays / 30)} months ago`;
     return `Joined ${Math.floor(diffDays / 365)} years ago`;
   };
 
-  return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Profile Settings</h1>
+  const getMemberSince = () => {
+    if (!user?.createdAt) return 'Recently';
+    return new Date(user.createdAt).toLocaleDateString('en-US', {
+      month: 'short',
+      year: 'numeric'
+    });
+  };
 
-      {/* Message Alert */}
+  const profileCompletion = useMemo(() => {
+    const checks = [
+      Boolean(formData.name?.trim()),
+      Boolean(formData.phone?.trim()),
+      Boolean(formData.experienceLevel?.trim()),
+      Boolean(formData.primaryRole?.trim()),
+      Array.isArray(formData.skills) && formData.skills.length > 0
+    ];
+    const completeCount = checks.filter(Boolean).length;
+    return Math.round((completeCount / checks.length) * 100);
+  }, [formData]);
+
+  const renderReadOnlyValue = (value, fallback = 'Not provided') => (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800">
+      {value || fallback}
+    </div>
+  );
+
+  return (
+    <div className="relative mx-auto max-w-[1120px] space-y-7 pb-4">
+      <div className="pointer-events-none absolute -left-24 top-20 hidden text-[82px] font-semibold leading-[0.9] tracking-[0.08em] text-slate-200/70 xl:block">
+        <p>PROFILE</p>
+        <p>CAREER</p>
+        <p>GROWTH</p>
+      </div>
+
+      <section className="relative z-10 overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-900 via-blue-900 to-blue-700 p-6 text-white shadow-xl shadow-blue-300/25 sm:p-7">
+        <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/10" />
+        <div className="absolute -bottom-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-cyan-300/10" />
+
+        <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 text-2xl font-bold shadow-lg ring-1 ring-white/30 backdrop-blur-sm">
+              {getInitials(formData.name || user?.name || '')}
+            </div>
+
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-100">
+                <Sparkles className="h-3.5 w-3.5" />
+                Professional Profile
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">
+                {formData.name || user?.name || 'Your Profile'}
+              </h1>
+              <p className="mt-1 text-sm text-blue-100">{formData.email || user?.email || 'No email available'}</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.14em] text-blue-200">
+                {getAccountAge()} · Member since {getMemberSince()}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => (isEditing ? handleCancel() : setIsEditing(true))}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-white/30 bg-white/10 px-5 text-sm font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isEditing ? 'Cancel Editing' : 'Edit Profile'}
+          </button>
+        </div>
+
+        <div className="relative mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-100">Interviews</p>
+            <p className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <Trophy className="h-5 w-5 text-blue-100" />
+              {interviewStats.totalInterviews}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-100">Average Score</p>
+            <p className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <Target className="h-5 w-5 text-blue-100" />
+              {interviewStats.avgScore}%
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-100">Best Score</p>
+            <p className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <Award className="h-5 w-5 text-blue-100" />
+              {interviewStats.highestScore}%
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-100">Profile Completion</p>
+            <p className="mt-2 flex items-center gap-2 text-2xl font-semibold">
+              <CheckCircle2 className="h-5 w-5 text-blue-100" />
+              {profileCompletion}%
+            </p>
+          </div>
+        </div>
+      </section>
+
       {message.text && (
-        <div className={`mb-6 p-4 rounded-lg ${
-          message.type === 'success' 
-            ? 'bg-green-50 text-green-800 border border-green-200' 
-            : 'bg-red-50 text-red-800 border border-red-200'
-        }`}>
-          <div className="flex items-center">
-            <span className="mr-2">
-              {message.type === 'success' ? '✓' : '✕'}
+        <div
+          className={`relative z-10 rounded-2xl border px-4 py-3 text-sm ${message.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'border-rose-200 bg-rose-50 text-rose-700'
+            }`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/80 text-xs font-bold">
+              {message.type === 'success' ? 'OK' : '!'}
             </span>
             <span>{message.text}</span>
           </div>
         </div>
       )}
 
-      {/* Profile Card */}
-      <div className="card mb-6">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
-            {/* Avatar */}
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-              {getInitials(user?.name || '')}
-            </div>
-            
-            {/* User Info */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">{user?.name || 'User'}</h2>
-              <p className="text-gray-600">{user?.email}</p>
-              <p className="text-sm text-gray-500 mt-1">{getAccountAge()}</p>
-            </div>
-          </div>
+      <form onSubmit={handleSubmit} className="relative z-10 space-y-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <header className="flex items-center gap-2">
+              <UserRound className="h-4 w-4 text-blue-600" />
+              <h2 className="text-lg font-semibold text-slate-900">Identity & Contact</h2>
+            </header>
 
-          {/* Edit Button */}
-          {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium"
-            >
-              Edit Profile
-            </button>
-          )}
-        </div>
-
-        {/* Profile Form */}
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-6">
-            {/* Name Field */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
-              {isEditing ? (
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your full name"
-                />
-              ) : (
-                <p className="text-gray-900 py-2">{formData.name || 'Not provided'}</p>
-              )}
-            </div>
-
-            {/* Email Field (Read-only) */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
-              </label>
-              <p className="text-gray-600 py-2 flex items-center gap-2">
-                {formData.email}
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                  Cannot be changed
-                </span>
-              </p>
-            </div>
-
-            {/* Phone Field */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number
-              </label>
-              {isEditing ? (
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your phone number"
-                  pattern="[0-9]{10,15}"
-                />
-              ) : (
-                <p className="text-gray-900 py-2">{formData.phone || 'Not provided'}</p>
-              )}
-            </div>
-
-            {/* Experience Level */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Experience Level
-              </label>
-              {isEditing ? (
-                <select
-                  name="experienceLevel"
-                  value={formData.experienceLevel}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {experienceLevels.map(level => (
-                    <option key={level} value={level}>{level}</option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-gray-900 py-2">{formData.experienceLevel}</p>
-              )}
-            </div>
-
-            {/* Primary Role */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Primary Role
-              </label>
-              {isEditing ? (
-                <select
-                  name="primaryRole"
-                  value={formData.primaryRole}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {roles.map(role => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-gray-900 py-2">{formData.primaryRole}</p>
-              )}
-            </div>
-
-            {/* Skills */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Skills
-              </label>
-              
-              {/* Skills Display */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                {formData.skills.length > 0 ? (
-                  formData.skills.map((skill, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
-                    >
-                      {skill}
-                      {isEditing && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSkill(skill)}
-                          className="text-blue-600 hover:text-blue-800 font-bold"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </span>
-                  ))
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Full Name
+                </label>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    placeholder="Enter your full name"
+                  />
                 ) : (
-                  <p className="text-gray-500 text-sm py-2">No skills added yet</p>
+                  renderReadOnlyValue(formData.name)
                 )}
               </div>
 
-              {/* Add Skill Dropdown */}
-              {isEditing && (
-                <div className="flex gap-2">
-                  <select
-                    value={newSkill}
-                    onChange={(e) => setNewSkill(e.target.value)}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Select a skill to add...</option>
-                    {availableSkills
-                      .filter(skill => !formData.skills.includes(skill))
-                      .map(skill => (
-                        <option key={skill} value={skill}>{skill}</option>
-                      ))
-                    }
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddSkill}
-                    disabled={!newSkill}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Add
-                  </button>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Email Address
+                </label>
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <span className="inline-flex items-center gap-2 font-medium text-slate-800">
+                    <Mail className="h-4 w-4 text-slate-500" />
+                    {formData.email || 'Not provided'}
+                  </span>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">
+                    Locked
+                  </span>
                 </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            {isEditing && (
-              <div className="flex gap-3 pt-4 border-t">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Saving...' : 'Save Changes'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  disabled={loading}
-                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Cancel
-                </button>
               </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Phone Number
+                </label>
+                {isEditing ? (
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    placeholder="Enter your phone number"
+                    pattern="[0-9]{10,15}"
+                  />
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                    <span className="inline-flex items-center gap-2 font-medium">
+                      <Phone className="h-4 w-4 text-slate-500" />
+                      {formData.phone || 'Not provided'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <header className="flex items-center gap-2">
+              <Briefcase className="h-4 w-4 text-blue-600" />
+              <h2 className="text-lg font-semibold text-slate-900">Career Configuration</h2>
+            </header>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Experience Level
+                </label>
+                {isEditing ? (
+                  <div className="relative">
+                    <select
+                      name="experienceLevel"
+                      value={formData.experienceLevel}
+                      onChange={handleChange}
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 pr-10 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {experienceLevels.map((level) => (
+                        <option key={level} value={level}>{level}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  </div>
+                ) : (
+                  renderReadOnlyValue(formData.experienceLevel)
+                )}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Primary Role
+                </label>
+                {isEditing ? (
+                  <div className="relative">
+                    <select
+                      name="primaryRole"
+                      value={formData.primaryRole}
+                      onChange={handleChange}
+                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 pr-10 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {roles.map((role) => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  </div>
+                ) : (
+                  renderReadOnlyValue(formData.primaryRole)
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Account Signals</p>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  <p className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-blue-600" />
+                      Membership
+                    </span>
+                    <span className="font-semibold">{getMemberSince()}</span>
+                  </p>
+                  <p className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-blue-600" />
+                      This week activity
+                    </span>
+                    <span className="font-semibold">{interviewStats.thisWeek} interviews</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <header className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-600" />
+              <h2 className="text-lg font-semibold text-slate-900">Skill Matrix</h2>
+            </div>
+            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+              {formData.skills.length} skills
+            </span>
+          </header>
+
+          <div className="mt-4 flex min-h-[48px] flex-wrap gap-2">
+            {formData.skills.length > 0 ? (
+              formData.skills.map((skill, index) => (
+                <span
+                  key={`${skill}-${index}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                >
+                  {skill}
+                  {isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSkill(skill)}
+                      className="text-blue-500 transition hover:text-rose-600"
+                      aria-label={`Remove ${skill}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500">No skills added yet</p>
             )}
           </div>
-        </form>
-      </div>
+
+          {isEditing && (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <select
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 pr-10 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="">Select a skill to add...</option>
+                  {availableSkills
+                    .filter((skill) => !formData.skills.includes(skill))
+                    .map((skill) => (
+                      <option key={skill} value={skill}>{skill}</option>
+                    ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddSkill}
+                disabled={!newSkill}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="h-4 w-4" />
+                Add Skill
+              </button>
+            </div>
+          )}
+        </article>
+
+        {isEditing && (
+          <div className="flex flex-col-reverse gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={loading}
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 px-6 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Discard
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        )}
+      </form>
     </div>
   );
 };

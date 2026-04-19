@@ -52,11 +52,16 @@ const generateQuestions = async (req, res) => {
     // Save questions to database
     const savedQuestions = [];
     for (let i = 0; i < generatedQuestions.length; i++) {
+      const expectedConcepts = Array.isArray(generatedQuestions[i].expectedConcepts)
+        ? generatedQuestions[i].expectedConcepts
+        : [];
+
       const question = new Question({
         interviewId,
         questionNumber: i + 1,
         questionText: generatedQuestions[i].questionText,
         questionCategory: generatedQuestions[i].category || 'General',
+        expectedConcepts,
         difficulty: generatedQuestions[i].difficulty || 'Medium',
         aiGenerated: true
       });

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mlService = require('../services/mlService');
-const { Interview, Question } = require('../models');
+const { Interview, Question, Answer } = require('../models');
 const { authenticateToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
@@ -12,6 +12,97 @@ const getQualityFromScore = (score) => {
   if (score >= 5) return 'Average';
   if (score >= 3) return 'Below Average';
   return 'Poor';
+};
+
+const normalizeScore10 = (value, fallback = 0) => {
+  const parsed = parseFloat(value);
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(10, parsed));
+};
+
+const scoreToPercent = (score10) => Math.round(normalizeScore10(score10) * 10);
+
+const normalizePercent = (value, fallback = 0) => {
+  const parsed = parseFloat(value);
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(100, parsed));
+};
+
+const getConfidenceLevelFromPercent = (confidencePercent) => {
+  const normalized = normalizePercent(confidencePercent, 0);
+
+  if (normalized >= 85) return 'High';
+  if (normalized >= 65) return 'Moderate';
+  if (normalized >= 40) return 'Low';
+  return 'Very Low';
+};
+
+const computeAccuracyRateFromEvaluations = (evaluations = []) => {
+  if (!Array.isArray(evaluations) || evaluations.length === 0) {
+    return 0;
+  }
+
+  const validScores = evaluations
+    .map((item) => normalizeScore10(item?.score, 0))
+    .filter((score) => !Number.isNaN(score));
+
+  if (validScores.length === 0) {
+    return 0;
+  }
+
+  // A score >= 6/10 means the answer is broadly correct for interview purposes.
+  const correctCount = validScores.filter((score) => score >= 6).length;
+  return Math.round((correctCount / validScores.length) * 100);
+};
+
+const computeAccuracyRateFromAnswerDocs = (answers = []) => {
+  if (!Array.isArray(answers) || answers.length === 0) {
+    return 0;
+  }
+
+  const reviewed = answers.filter(
+    (answer) => answer?.aiReview && answer.aiReview.score !== null && answer.aiReview.score !== undefined
+  );
+
+  if (reviewed.length === 0) {
+    return 0;
+  }
+
+  const correctCount = reviewed.filter((answer) => normalizeScore10(answer.aiReview.score, 0) >= 6).length;
+  return Math.round((correctCount / reviewed.length) * 100);
+};
+
+const computeDerivedConfidencePercent = ({
+  communicationScore10 = 0,
+  accuracyRate = 0,
+  answeredQuestions = 0,
+  totalQuestions = 0
+}) => {
+  const communicationPercent = scoreToPercent(communicationScore10);
+  const completionRate = totalQuestions > 0
+    ? Math.round((Math.max(0, answeredQuestions) / totalQuestions) * 100)
+    : 0;
+
+  const derived = (0.45 * communicationPercent) + (0.35 * accuracyRate) + (0.20 * completionRate);
+  return normalizePercent(Math.round(derived), 0);
+};
+
+const normalizeMissingPoints = (individualEval = {}) => {
+  if (Array.isArray(individualEval.missingPoints) && individualEval.missingPoints.length > 0) {
+    return individualEval.missingPoints;
+  }
+
+  if (Array.isArray(individualEval.improvements) && individualEval.improvements.length > 0) {
+    return individualEval.improvements;
+  }
+
+  return [];
 };
 
 /**
@@ -98,11 +189,16 @@ router.post('/questions/generate', authenticateToken, async (req, res) => {
     // Save questions to database
     const savedQuestions = [];
     for (let i = 0; i < generatedQuestions.length; i++) {
+      const expectedConcepts = Array.isArray(generatedQuestions[i].expectedConcepts)
+        ? generatedQuestions[i].expectedConcepts
+        : [];
+
       const question = new Question({
         interviewId: interview.interviewId,
         questionNumber: i + 1,
         questionText: generatedQuestions[i].questionText,
         questionCategory: generatedQuestions[i].category || 'General',
+        expectedConcepts,
         difficulty: generatedQuestions[i].difficulty || 'Medium',
         aiGenerated: true
       });
@@ -114,9 +210,12 @@ router.post('/questions/generate', authenticateToken, async (req, res) => {
         id: question.questionId,
         question: question.questionText, // Add 'question' field for compatibility
         category: question.questionCategory,
+        expectedConcepts,
         type: interviewType === 'technical' ? 'technical' : 'behavioral',
         hints: ['Take your time to think through your answer', 'Provide specific examples if possible'],
-        evaluationCriteria: ['Technical knowledge', 'Problem-solving approach', 'Communication clarity']
+        evaluationCriteria: expectedConcepts.length > 0
+          ? expectedConcepts
+          : ['Technical knowledge', 'Problem-solving approach', 'Communication clarity']
       };
 
       savedQuestions.push(questionForFrontend);
@@ -292,11 +391,51 @@ router.post('/:interviewId/submit', authenticateToken, async (req, res) => {
 
     logger.info(`✅ Saved ${savedAnswers.length} answers to database`);
 
+    // Load persisted questions so evaluation uses canonical question text and expected concepts.
+    const interviewQuestions = await Question.find({ interviewId }).sort({ questionNumber: 1 });
+
+    const incomingQuestionById = new Map(
+      (Array.isArray(questions) ? questions : [])
+        .filter((item) => item && (item.questionId || item.id))
+        .map((item) => [item.questionId || item.id, item])
+    );
+
+    const questionsForEvaluation = interviewQuestions.length > 0
+      ? interviewQuestions.map((questionDoc) => {
+        const incomingQuestion = incomingQuestionById.get(questionDoc.questionId) || {};
+        const persistedExpectedConcepts = Array.isArray(questionDoc.expectedConcepts)
+          ? questionDoc.expectedConcepts
+          : [];
+        const expectedConcepts = persistedExpectedConcepts.length > 0
+          ? persistedExpectedConcepts
+          : (Array.isArray(incomingQuestion.expectedConcepts) ? incomingQuestion.expectedConcepts : []);
+
+        return {
+          ...incomingQuestion,
+          questionId: questionDoc.questionId,
+          id: questionDoc.questionId,
+          question: questionDoc.questionText,
+          questionText: questionDoc.questionText,
+          expectedConcepts
+        };
+      })
+      : questions;
+
     // NOW send everything for comprehensive ML evaluation
     // This is the ONLY place where full interview evaluation runs
     logger.info(`🤖 Calling ML service to evaluate all answers together...`);
-    const evaluation = await mlService.evaluateAllAnswers(questions, answers, interviewSetup);
+    const evaluation = await mlService.evaluateAllAnswers(questionsForEvaluation, answers, interviewSetup);
     logger.info(`✅ ML evaluation completed. Overall score: ${evaluation.overallScore}`);
+
+    const answeredQuestions = answers.filter(a => a.answer && a.answer.trim()).length;
+    const accuracyRate = computeAccuracyRateFromEvaluations(evaluation.individualEvaluations || []);
+    const communicationScore10 = normalizeScore10(evaluation.communicationScore, normalizeScore10(evaluation.overallScore, 0));
+    const derivedConfidenceScore = computeDerivedConfidencePercent({
+      communicationScore10,
+      accuracyRate,
+      answeredQuestions,
+      totalQuestions: questionsForEvaluation.length
+    });
 
     // Find the interview in database
     const interview = await Interview.findOne({ interviewId });
@@ -311,21 +450,25 @@ router.post('/:interviewId/submit', authenticateToken, async (req, res) => {
     // Update interview with results
     interview.completeInterview({
       overallScore: Math.round(evaluation.overallScore * 10),
-      technicalScore: evaluation.technicalScore ? Math.round(evaluation.technicalScore * 10) : null,
-      communicationScore: evaluation.communicationScore ? Math.round(evaluation.communicationScore * 10) : null,
-      confidenceScore: evaluation.confidenceScore ? Math.round(evaluation.confidenceScore * 10) : null,
+      technicalScore:
+        evaluation.technicalScore !== undefined && evaluation.technicalScore !== null
+          ? Math.round(evaluation.technicalScore * 10)
+          : null,
+      communicationScore:
+        evaluation.communicationScore !== undefined && evaluation.communicationScore !== null
+          ? Math.round(evaluation.communicationScore * 10)
+          : null,
+      confidenceScore:
+        derivedConfidenceScore,
       verdict: evaluation.recommendation || '',
       strengths: evaluation.overallStrengths || [],
       improvements: evaluation.overallImprovements || [],
-      answeredQuestions: answers.filter(a => a.answer && a.answer.trim()).length
+      answeredQuestions
     });
 
     await interview.save();
 
     logger.info(`Saved interview results for ${interviewId}`);
-
-    // Get questions to return with results
-    const interviewQuestions = await Question.find({ interviewId }).sort({ questionNumber: 1 });
 
     logger.info(`Processing ${interviewQuestions.length} questions with ${answers.length} answers`);
     logger.info(`Evaluation has ${evaluation.individualEvaluations?.length || 0} individual evaluations`);
@@ -344,16 +487,23 @@ router.post('/:interviewId/submit', authenticateToken, async (req, res) => {
             });
 
             if (answer) {
-              const score = parseFloat(individualEval.score) || 0;
+              const score = normalizeScore10(individualEval.score, 0);
+              const technicalScore = normalizeScore10(individualEval.technicalScore, score);
+              const communicationScore = normalizeScore10(individualEval.communicationScore, score);
+              const quality = individualEval.quality || getQualityFromScore(score);
+              const missingPoints = normalizeMissingPoints(individualEval);
+
               answer.aiReview = {
                 score: score,
                 maxScore: 10,
-                technicalScore: parseFloat(individualEval.technicalScore) || score,
-                communicationScore: parseFloat(individualEval.communicationScore) || score,
-                quality: getQualityFromScore(score),
+                technicalScore,
+                communicationScore,
+                quality,
                 feedback: individualEval.feedback || '',
-                missingPoints: Array.isArray(individualEval.improvements) ? individualEval.improvements : [],
-                improvementTip: Array.isArray(individualEval.strengths) ? individualEval.strengths.join('. ') : ''
+                missingPoints,
+                improvementTip:
+                  individualEval.improvementTip ||
+                  (Array.isArray(individualEval.strengths) ? individualEval.strengths.join('. ') : '')
               };
               await answer.save();
               logger.info(`Saved evaluation for question ${question.questionNumber}, score: ${score}`);
@@ -376,11 +526,13 @@ router.post('/:interviewId/submit', authenticateToken, async (req, res) => {
       interviewType: interviewSetup.interviewType,
       difficulty: interviewSetup.difficulty || 'medium',
       totalQuestions: interviewQuestions.length,
-      answeredQuestions: answers.filter(a => a.answer && a.answer.trim()).length,
+      answeredQuestions,
       overallScore: interview.results.overallScore,
       technicalScore: interview.results.technicalScore,
       communicationScore: interview.results.communicationScore,
       confidenceScore: interview.results.confidenceScore,
+      accuracyRate,
+      confidenceLevel: getConfidenceLevelFromPercent(interview.results.confidenceScore),
       verdict: interview.results.verdict,
       strengths: interview.results.strengths,
       improvements: interview.results.improvements,
@@ -415,6 +567,10 @@ router.post('/:interviewId/submit', authenticateToken, async (req, res) => {
 
         logger.info(`Q${idx + 1} [${q.questionId.substring(0, 8)}]: Answer=${hasAnswer}, Eval=${!!individualEval}, Score=${individualEval?.score || 0}`);
 
+        const scoreOutOf10 = individualEval ? normalizeScore10(individualEval.score, hasAnswer ? 5 : 0) : 0;
+        const quality = individualEval?.quality || getQualityFromScore(scoreOutOf10);
+        const missingPoints = individualEval ? normalizeMissingPoints(individualEval) : [];
+
         return {
           id: q.questionId, // Use questionId consistently
           questionId: q.questionId,
@@ -422,19 +578,30 @@ router.post('/:interviewId/submit', authenticateToken, async (req, res) => {
           questionText: q.questionText,
           question: q.questionText,
           category: q.questionCategory,
+          expectedConcepts: Array.isArray(q.expectedConcepts) ? q.expectedConcepts : [],
           difficulty: q.difficulty,
           answer: userAnswer,
           userAnswer: userAnswer,
           evaluation: individualEval ? {
-            score: Math.round(individualEval.score * 10), // Convert 0-10 scale to 0-100 percentage
+            score: scoreToPercent(scoreOutOf10), // Convert 0-10 scale to 0-100 percentage
+            rawScore: scoreOutOf10,
+            quality,
             strengths: individualEval.strengths || [],
             improvements: individualEval.improvements || [],
-            feedback: individualEval.feedback || 'Answer evaluated'
+            missingPoints,
+            feedback: individualEval.feedback || 'Answer evaluated',
+            improvementTip:
+              individualEval.improvementTip ||
+              (Array.isArray(individualEval.strengths) ? individualEval.strengths.join('. ') : '')
           } : {
             score: hasAnswer ? 50 : 0,
+            rawScore: hasAnswer ? 5 : 0,
+            quality: hasAnswer ? 'Average' : 'Poor',
             strengths: hasAnswer ? ['Provided an answer'] : [],
             improvements: hasAnswer ? ['Add more detail to your response'] : ['Answer was not provided'],
-            feedback: hasAnswer ? 'Answer received but not evaluated' : 'No answer provided'
+            missingPoints: hasAnswer ? ['Add more detail to your response'] : ['Answer was not provided'],
+            feedback: hasAnswer ? 'Answer received but not evaluated' : 'No answer provided',
+            improvementTip: hasAnswer ? 'Use definition, examples, and trade-offs for stronger answers.' : ''
           }
         };
       })
@@ -810,6 +977,29 @@ router.get('/:interviewId', authenticateToken, async (req, res) => {
     const Answer = require('../models/Answer');
     const answers = await Answer.find({ interviewId });
 
+    const reviewedAnswers = answers.filter(
+      (answer) => answer?.aiReview && answer.aiReview.score !== null && answer.aiReview.score !== undefined
+    );
+
+    const avgCommunicationScore10 = reviewedAnswers.length > 0
+      ? reviewedAnswers.reduce(
+        (sum, answer) => sum + normalizeScore10(answer?.aiReview?.communicationScore, normalizeScore10(answer?.aiReview?.score, 0)),
+        0
+      ) / reviewedAnswers.length
+      : normalizeScore10(interview.results?.communicationScore, 0) / 10;
+
+    const accuracyRate = computeAccuracyRateFromAnswerDocs(answers);
+    const answeredQuestions = interview.results?.answeredQuestions || answers.length || 0;
+    const derivedConfidenceScore = computeDerivedConfidencePercent({
+      communicationScore10: avgCommunicationScore10,
+      accuracyRate,
+      answeredQuestions,
+      totalQuestions: questions.length
+    });
+
+    const confidenceScore = normalizePercent(interview.results?.confidenceScore, derivedConfidenceScore);
+    const confidenceLevel = getConfidenceLevelFromPercent(confidenceScore);
+
     logger.info(`Found ${questions.length} questions and ${answers.length} answers for interview ${interviewId}`);
 
     // Log question and answer IDs for debugging
@@ -833,9 +1023,12 @@ router.get('/:interviewId', authenticateToken, async (req, res) => {
       difficulty: interview.difficulty || 'Medium',
       status: interview.status,
       totalQuestions: questions.length,
-      answeredQuestions: interview.results?.answeredQuestions || 0,
+      answeredQuestions,
       score: interview.results?.overallScore || 0,
       overallScore: interview.results?.overallScore || 0,
+      accuracyRate,
+      confidenceScore,
+      confidenceLevel,
       duration: interview.durationMinutes,
       actualDuration: interview.completedAt && interview.startedAt ?
         Math.round((new Date(interview.completedAt) - new Date(interview.startedAt)) / 60000) :
@@ -854,6 +1047,11 @@ router.get('/:interviewId', authenticateToken, async (req, res) => {
       questions: questions.map((q, idx) => {
         // Match answer using questionId (UUID), NOT MongoDB _id
         const answer = answers.find(a => a.questionId === q.questionId);
+        const hasAiEvaluation = Boolean(
+          answer?.aiReview && answer.aiReview.score !== null && answer.aiReview.score !== undefined
+        );
+        const scoreOutOf10 = normalizeScore10(answer?.aiReview?.score, 0);
+        const quality = answer?.aiReview?.quality || getQualityFromScore(scoreOutOf10);
 
         // Log matching attempts for debugging
         if (idx === 0) {
@@ -868,14 +1066,16 @@ router.get('/:interviewId', authenticateToken, async (req, res) => {
           question: q.questionText,
           questionCategory: q.questionCategory,
           category: q.questionCategory,
+          expectedConcepts: Array.isArray(q.expectedConcepts) ? q.expectedConcepts : [],
           difficulty: q.difficulty,
           answer: answer?.userAnswer || '',
           userAnswer: answer?.userAnswer || '',
           timeSpent: answer?.answerTimeSeconds || 0,
           // Format evaluation to match Results page expectations
-          evaluation: answer?.aiReview ? {
-            score: Math.round((answer.aiReview.score / (answer.aiReview.maxScore || 10)) * 100), // Convert to percentage
-            quality: answer.aiReview.quality || 'Not Evaluated',
+          evaluation: hasAiEvaluation ? {
+            score: scoreToPercent(scoreOutOf10),
+            rawScore: scoreOutOf10,
+            quality,
             feedback: answer.aiReview.feedback || '',
             missingPoints: answer.aiReview.missingPoints || [],
             improvements: answer.aiReview.missingPoints || [],
@@ -914,16 +1114,64 @@ router.delete('/:interviewId', authenticateToken, async (req, res) => {
   try {
     const { interviewId } = req.params;
 
-    // TODO: Delete interview from database
-    // TODO: Verify interview belongs to authenticated user
+    if (!interviewId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Interview ID is required'
+      });
+    }
 
-    logger.info(`Deleting interview ${interviewId} for user ${req.user.id}`);
+    const interview = await Interview.findOne({ interviewId });
+
+    if (!interview) {
+      return res.status(404).json({
+        success: false,
+        message: 'Interview not found'
+      });
+    }
+
+    if (interview.userId !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized access to this interview'
+      });
+    }
+
+    const [questionDeleteResult, answerDeleteResult, interviewDeleteResult] = await Promise.all([
+      Question.deleteMany({ interviewId }),
+      Answer.deleteMany({ interviewId }),
+      Interview.deleteOne({ interviewId, userId: req.userId })
+    ]);
+
+    let sessionDeleteCount = 0;
+    try {
+      const InterviewSession = require('../models/InterviewSession');
+      const sessionDeleteResult = await InterviewSession.deleteMany({ interviewId, userId: req.userId });
+      sessionDeleteCount = sessionDeleteResult?.deletedCount || 0;
+    } catch (sessionDeleteError) {
+      // InterviewSession is optional in current flow; do not fail the request if this cleanup fails.
+      logger.warn(`Interview session cleanup skipped for ${interviewId}: ${sessionDeleteError.message}`);
+    }
+
+    logger.info(
+      `Deleted interview ${interviewId} for user ${req.userId}. ` +
+      `interview=${interviewDeleteResult?.deletedCount || 0}, ` +
+      `questions=${questionDeleteResult?.deletedCount || 0}, ` +
+      `answers=${answerDeleteResult?.deletedCount || 0}, ` +
+      `sessions=${sessionDeleteCount}`
+    );
 
     res.json({
       success: true,
       message: 'Interview deleted successfully',
       data: {
         interviewId,
+        deleted: {
+          interview: interviewDeleteResult?.deletedCount || 0,
+          questions: questionDeleteResult?.deletedCount || 0,
+          answers: answerDeleteResult?.deletedCount || 0,
+          sessions: sessionDeleteCount
+        },
         deletedAt: new Date().toISOString()
       }
     });

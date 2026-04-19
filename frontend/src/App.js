@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { InterviewProvider } from './context/InterviewContext';
+import { ConfirmationDialogProvider } from './context/ConfirmationDialogContext';
 
 // Import pages (to be created)
 import Landing from './pages/Landing';
@@ -24,98 +25,100 @@ function App() {
   return (
     <AuthProvider>
       <InterviewProvider>
-        <div className="App">
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            
-            {/* Protected routes */}
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Dashboard />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/debug" element={<AuthDebug />} />
-            
-            <Route path="/interview-setup" element={
-              <ProtectedRoute>
-                <Layout>
-                  <InterviewSetup />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/interview-session" element={
-              <ProtectedRoute>
-                <InterviewSession />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/interview-results" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Results />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/interview/setup" element={
-              <ProtectedRoute>
-                <Layout>
-                  <InterviewSetup />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/interview/live/:id" element={
-              <ProtectedRoute>
-                <Layout>
-                  <LiveInterview />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/interview/results/:id" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Results />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/results" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Results />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/history" element={
-              <ProtectedRoute>
-                <Layout>
-                  <History />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <Layout>
-                  <Profile />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            {/* Catch all - redirect to dashboard if authenticated, otherwise to landing */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
+        <ConfirmationDialogProvider>
+          <div className="App">
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<Landing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+
+              {/* Protected routes */}
+              <Route path="/dashboard" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Dashboard />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/debug" element={<AuthDebug />} />
+
+              <Route path="/interview-setup" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <InterviewSetup />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/interview-session" element={
+                <ProtectedRoute>
+                  <InterviewSession />
+                </ProtectedRoute>
+              } />
+
+              <Route path="/interview-results" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Results />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/interview/setup" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <InterviewSetup />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/interview/live/:id" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <LiveInterview />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/interview/results/:id" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Results />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/results" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Results />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/history" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <History />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Profile />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+
+              {/* Catch all - redirect to dashboard if authenticated, otherwise to landing */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
+        </ConfirmationDialogProvider>
       </InterviewProvider>
     </AuthProvider>
   );

@@ -15,6 +15,7 @@ from .schemas import (
 from .scoring import (
     evaluate_answer,
     evaluate_batch,
+    get_inference_status,
     generate_follow_up_question,
     generate_questions,
 )
@@ -32,11 +33,13 @@ app = FastAPI(
 
 @app.get('/health')
 def health() -> dict:
+    inference = get_inference_status()
     return {
         'status': 'ok',
         'model': MODEL_NAME,
         'mode': INFERENCE_MODE,
         'service': 'fastapi-ml-evaluator',
+        'inference': inference,
     }
 
 

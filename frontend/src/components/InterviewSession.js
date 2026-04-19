@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Play, 
-  Pause, 
-  SkipForward, 
-  Clock, 
-  MessageSquare, 
-  CheckCircle2, 
+import {
+  SkipForward,
+  Clock,
+  MessageSquare,
+  CheckCircle2,
   AlertCircle,
   Mic,
   MicOff,
@@ -18,7 +16,7 @@ import interviewService from '../services/interviewService';
 const InterviewSession = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   // Interview session state
   const [interview, setInterview] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -26,45 +24,41 @@ const InterviewSession = () => {
   const [currentAnswer, setCurrentAnswer] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  
+
   // Timer state
-  const [sessionStartTime, setSessionStartTime] = useState(null);
-  const [questionStartTime, setQuestionStartTime] = useState(null);
   const [sessionElapsed, setSessionElapsed] = useState(0);
   const [questionElapsed, setQuestionElapsed] = useState(0);
-  
+
   // UI state
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [showHints, setShowHints] = useState(false);
-  
+
   // Progress tracking
   const [answers, setAnswers] = useState({});
-  const [evaluations, setEvaluations] = useState({});
-  
+
   // Refs for timers and speech
   const sessionTimerRef = useRef(null);
   const questionTimerRef = useRef(null);
   const speechSynthesisRef = useRef(null);
   const sessionStartTimeRef = useRef(null);
-  const questionStartTimeRef = useRef(null);
 
   // Initialize interview session
   useEffect(() => {
     const initializeInterview = async () => {
       try {
         setIsLoading(true);
-        
+
         // Check if we have interview data from localStorage or navigation state
         let interviewData = interviewService.getCurrentInterview();
-        
+
         if (!interviewData && location.state?.interview) {
           interviewData = location.state.interview;
           // Save to localStorage for page refresh
           localStorage.setItem('currentInterview', JSON.stringify(interviewData));
         }
-        
+
         if (!interviewData) {
           // No interview data, redirect to setup
           console.error('❌ No interview data found');
@@ -74,10 +68,10 @@ const InterviewSession = () => {
 
         console.log('📋 Interview data loaded:', interviewData);
         setInterview(interviewData);
-        
+
         // Get questions - they might be in different places depending on the response
         let questionsData = null;
-        
+
         // Try different locations for questions
         if (interviewData.questions) {
           questionsData = interviewData.questions;
@@ -89,10 +83,10 @@ const InterviewSession = () => {
           questionsData = interviewService.getCurrentQuestions();
           console.log('✅ Found questions from interviewService');
         }
-        
+
         console.log('📝 Questions data:', questionsData);
         console.log('📊 Number of questions:', questionsData?.length || 0);
-        
+
         if (!questionsData || questionsData.length === 0) {
           console.error('❌ No questions found in interview data');
           console.error('📋 Interview data structure:', JSON.stringify(interviewData, null, 2));
@@ -120,14 +114,13 @@ const InterviewSession = () => {
 
         console.log('✅ Normalized questions:', normalizedQuestions);
         setQuestions(normalizedQuestions);
-        
+
         // Load saved progress if any
         const savedProgress = interviewService.getSavedProgress();
         let startTime = Date.now();
 
         if (savedProgress) {
           setAnswers(savedProgress.answers || {});
-          setEvaluations(savedProgress.evaluations || {});
           setCurrentQuestionIndex(savedProgress.currentQuestionIndex || 0);
           if (savedProgress.sessionStartTime) {
             startTime = savedProgress.sessionStartTime;
@@ -142,15 +135,12 @@ const InterviewSession = () => {
         }
 
         // Start session
-        setSessionStartTime(startTime);
         sessionStartTimeRef.current = startTime;
-        setQuestionStartTime(Date.now());
-        questionStartTimeRef.current = Date.now();
-        
+
         // Start timers
         startSessionTimer();
         startQuestionTimer();
-        
+
         // Read first question aloud
         readQuestionAloud(questionsData[0]);
 
@@ -163,7 +153,7 @@ const InterviewSession = () => {
     };
 
     initializeInterview();
-    
+
     // Cleanup on unmount
     return () => {
       if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
@@ -175,7 +165,7 @@ const InterviewSession = () => {
   // Timer functions
   const startSessionTimer = () => {
     if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
-    
+
     sessionTimerRef.current = setInterval(() => {
       if (sessionStartTimeRef.current) {
         setSessionElapsed(Date.now() - sessionStartTimeRef.current);
@@ -185,11 +175,9 @@ const InterviewSession = () => {
 
   const startQuestionTimer = () => {
     if (questionTimerRef.current) clearInterval(questionTimerRef.current);
-    
+
     const now = Date.now();
-    setQuestionStartTime(now);
-    questionStartTimeRef.current = now;
-    
+
     questionTimerRef.current = setInterval(() => {
       setQuestionElapsed(Date.now() - now);
     }, 1000);
@@ -205,7 +193,7 @@ const InterviewSession = () => {
   // Speech functions
   const readQuestionAloud = (question) => {
     if (!question || isSpeaking) return;
-    
+
     try {
       speechSynthesis.cancel();
       const questionText = question.question || question.questionText || '';
@@ -213,16 +201,16 @@ const InterviewSession = () => {
         console.warn('No question text to read aloud');
         return;
       }
-      
+
       const utterance = new SpeechSynthesisUtterance(questionText);
       utterance.rate = 0.9;
       utterance.pitch = 1;
       utterance.volume = 0.8;
-      
+
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
-      
+
       speechSynthesis.speak(utterance);
       speechSynthesisRef.current = utterance;
     } catch (error) {
@@ -259,7 +247,7 @@ const InterviewSession = () => {
     }
 
     const currentQuestion = questions[currentQuestionIndex];
-    
+
     if (!currentQuestion) {
       setError('Invalid question. Please refresh and try again.');
       console.error('Current question not found:', { currentQuestionIndex, questionsLength: questions.length });
@@ -317,9 +305,9 @@ const InterviewSession = () => {
       setCurrentAnswer('');
       setShowHints(false);
       setError('');
-      
+
       startQuestionTimer();
-      
+
       // Read next question
       setTimeout(() => {
         readQuestionAloud(questions[currentQuestionIndex + 1]);
@@ -332,7 +320,7 @@ const InterviewSession = () => {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
       setCurrentAnswer(answers[currentQuestionIndex - 1]?.answer || '');
       setError('');
-      
+
       startQuestionTimer();
     }
   };
@@ -342,12 +330,12 @@ const InterviewSession = () => {
       // Stop all timers
       if (sessionTimerRef.current) clearInterval(sessionTimerRef.current);
       if (questionTimerRef.current) clearInterval(questionTimerRef.current);
-      
+
       const answersToSubmit = finalAnswers || answers;
-      
+
       // Show loading state
       setIsSubmitting(true);
-      
+
       // Prepare answers array for submission
       const answersArray = questions.map((q, idx) => ({
         questionId: q.id || q.questionId,
@@ -355,7 +343,7 @@ const InterviewSession = () => {
         answer: answersToSubmit[idx]?.answer || '',
         timeSpent: answersToSubmit[idx]?.timeSpent || 0
       }));
-      
+
       // Ensure we have interview setup data
       const interviewSetup = interview.setup || {
         jobRole: interview.jobRole || interview.role || 'Interview',
@@ -364,54 +352,54 @@ const InterviewSession = () => {
         interviewType: interview.interviewType || 'mixed',
         difficulty: interview.difficulty || 'medium'
       };
-      
+
       console.log('🔧 Interview setup:', interviewSetup);
-      
+
       // Submit all answers for evaluation
       console.log('📤 Submitting interview:', {
         interviewId: interview.interviewId,
         questionsCount: questions.length,
         answersCount: answersArray.filter(a => a.answer).length
       });
-      
+
       const evaluationResponse = await interviewService.submitAllAnswers(
         interview.interviewId,
         questions,
         answersArray,
         interviewSetup
       );
-      
+
       console.log('✅ Evaluation response:', evaluationResponse);
-      
+
       if (!evaluationResponse.success) {
         throw new Error(evaluationResponse.message || 'Failed to evaluate interview');
       }
-      
+
       // Backend now returns complete results with questions and evaluations
       const results = evaluationResponse.data;
-      
+
       if (!results || !results.interviewId) {
         console.error('❌ Invalid results structure:', results);
         throw new Error('Invalid response from server');
       }
-      
+
       // Enhance with timing data
       results.timeTaken = formatTime(sessionElapsed);
-      results.avgResponseTime = results.answeredQuestions > 0 
+      results.avgResponseTime = results.answeredQuestions > 0
         ? formatTime(sessionElapsed / results.answeredQuestions)
         : '0:00';
-      
+
       console.log('📊 Complete results:', results);
-      
+
       // Save results to localStorage for Results page
       interviewService.saveResults(results);
-      
+
       // Clear current interview session
       interviewService.clearCurrentSession();
-      
+
       // Navigate to results with complete data
       navigate('/results', { state: { results }, replace: true });
-      
+
     } catch (error) {
       console.error('❌ Error completing interview:', error);
       console.error('❌ Error details:', {
@@ -421,10 +409,10 @@ const InterviewSession = () => {
         answersSubmitted: Object.keys(answers).length,
         apiUrl: interviewService.baseURL
       });
-      
+
       // Provide more specific error messages
       let errorMessage = 'Failed to complete interview.';
-      
+
       if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
         errorMessage = 'Network error: Could not connect to server. Please check if the backend is running.';
       } else if (error.message.includes('401') || error.message.includes('Authentication')) {
@@ -434,7 +422,7 @@ const InterviewSession = () => {
       } else if (error.message) {
         errorMessage = `Failed to complete interview: ${error.message}`;
       }
-      
+
       setError(`${errorMessage} Your answers have been saved locally.`);
       setIsSubmitting(false);
     }
@@ -481,42 +469,46 @@ const InterviewSession = () => {
   }
 
   const currentQuestion = getCurrentQuestion();
+  const answeredCount = Object.keys(answers).length;
+  const currentWordCount = currentAnswer.trim() ? currentAnswer.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold text-gray-800">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 via-white to-slate-100">
+      <header className="border-b border-slate-200 bg-white/90 backdrop-blur-sm sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold tracking-[0.16em] uppercase text-slate-500">Active Interview</p>
+              <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
                 {interview?.setup?.jobRole} Interview
               </h1>
-              <span className="text-sm text-gray-500">
+              <p className="text-sm text-slate-600">
                 Question {currentQuestionIndex + 1} of {questions.length}
-              </span>
+              </p>
             </div>
-            
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-2 text-gray-600">
-                <Clock className="h-5 w-5" />
-                <span className="font-mono">{formatTime(sessionElapsed)}</span>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+                <Clock className="h-4 w-4" />
+                <span className="font-mono text-sm">{formatTime(sessionElapsed)}</span>
               </div>
-              
               <button
                 onClick={completeInterview}
-                className="text-red-600 hover:text-red-700 font-medium"
+                className="px-4 py-2 rounded-xl border border-red-200 text-red-700 bg-red-50 hover:bg-red-100 transition-colors text-sm font-medium"
               >
                 End Interview
               </button>
             </div>
           </div>
-          
-          {/* Progress Bar */}
-          <div className="pb-4">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-slate-500">Overall Progress</p>
+              <p className="text-xs font-semibold text-slate-700">{Math.round(getProgress())}%</p>
+            </div>
+            <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-300"
                 style={{ width: `${getProgress()}%` }}
               ></div>
             </div>
@@ -524,107 +516,121 @@ const InterviewSession = () => {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Question Panel */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                      {currentQuestion?.category}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
+          <div className="xl:col-span-2 space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="px-5 py-4 sm:px-6 border-b border-slate-200 bg-slate-50/80">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded-full bg-slate-900 text-white px-3 py-1 text-xs font-semibold">
+                      Question {currentQuestionIndex + 1}
                     </span>
-                    <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                      {currentQuestion?.difficulty}
+                    <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-800 px-3 py-1 text-xs font-medium">
+                      {currentQuestion?.category || 'General'}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 px-3 py-1 text-xs font-medium capitalize">
+                      {currentQuestion?.difficulty || 'Medium'}
                     </span>
                   </div>
-                  <h2 className="text-lg font-medium text-gray-800 mb-4">
-                    {currentQuestion?.question}
-                  </h2>
-                </div>
-                
-                <div className="flex items-center space-x-2 ml-4">
-                  <button
-                    onClick={toggleSpeech}
-                    className={`p-2 rounded-lg transition-colors ${ 
-                      isSpeaking 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                    title={isSpeaking ? 'Stop reading' : 'Read question aloud'}
-                  >
-                    {isSpeaking ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={toggleSpeech}
+                      className={`p-2.5 rounded-xl transition-colors ${isSpeaking
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      title={isSpeaking ? 'Stop reading' : 'Read question aloud'}
+                    >
+                      {isSpeaking ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Question Timer */}
-              <div className="flex items-center space-x-2 mb-6">
-                <Clock className="h-4 w-4 text-gray-500" />
-                <span className="text-sm text-gray-600">
-                  Time on this question: {formatTime(questionElapsed)}
-                </span>
-                <span className="text-sm text-gray-400">
-                  (Expected: {currentQuestion?.expectedDuration})
-                </span>
-              </div>
+              <div className="p-5 sm:p-6 space-y-5">
+                <p className="text-xl leading-relaxed text-slate-900 font-medium">
+                  {currentQuestion?.question}
+                </p>
 
-              {/* Hints */}
-              {currentQuestion?.hints && currentQuestion.hints.length > 0 && (
-                <div className="mb-6">
-                  <button
-                    onClick={() => setShowHints(!showHints)}
-                    className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center space-x-1"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    <span>{showHints ? 'Hide' : 'Show'} Hints</span>
-                  </button>
-                  
-                  {showHints && (
-                    <div className="mt-3 p-4 bg-blue-50 rounded-lg">
-                      <ul className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 text-slate-700 px-3 py-1.5">
+                    <Clock className="h-4 w-4" />
+                    Time on this question: {formatTime(questionElapsed)}
+                  </span>
+                  <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 px-3 py-1.5">
+                    Expected: {currentQuestion?.expectedDuration || '2-4 min'}
+                  </span>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm font-semibold text-slate-800">
+                      Your Answer
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">{currentWordCount} words</span>
+                      <button
+                        onClick={toggleRecording}
+                        className={`p-2 rounded-lg transition-colors ${isRecording
+                            ? 'bg-red-600 text-white animate-pulse'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        title={isRecording ? 'Stop recording' : 'Start voice recording'}
+                      >
+                        {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <textarea
+                    value={currentAnswer}
+                    onChange={(e) => setCurrentAnswer(e.target.value)}
+                    placeholder="Explain your approach clearly, mention trade-offs, and give an example where possible."
+                    className="w-full h-48 p-4 border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {currentQuestion?.hints && currentQuestion.hints.length > 0 && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-4">
+                    <button
+                      onClick={() => setShowHints(!showHints)}
+                      className="text-blue-700 hover:text-blue-800 text-sm font-semibold flex items-center space-x-2"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      <span>{showHints ? 'Hide' : 'Show'} AI Hints</span>
+                    </button>
+
+                    {showHints && (
+                      <ul className="mt-3 space-y-2">
                         {currentQuestion.hints.map((hint, index) => (
-                          <li key={index} className="text-sm text-blue-700 flex items-start space-x-2">
-                            <span className="text-blue-500 mt-1">•</span>
+                          <li key={index} className="text-sm text-blue-800 flex items-start gap-2">
+                            <span className="mt-1 text-blue-500">•</span>
                             <span>{hint}</span>
                           </li>
                         ))}
                       </ul>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
-              {/* Answer Input */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Your Answer
-                  </label>
-                  <button
-                    onClick={toggleRecording}
-                    className={`p-2 rounded-lg transition-colors ${
-                      isRecording 
-                        ? 'bg-red-600 text-white animate-pulse' 
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                    title={isRecording ? 'Stop recording' : 'Start voice recording'}
-                  >
-                    {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                  </button>
-                </div>
-                
-                <textarea
-                  value={currentAnswer}
-                  onChange={(e) => setCurrentAnswer(e.target.value)}
-                  placeholder="Type your answer here... (or use voice recording)"
-                  className="w-full h-40 p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  disabled={isSubmitting}
-                />
-                
+                {currentQuestion?.evaluationCriteria && currentQuestion.evaluationCriteria.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-900 mb-2">What will be evaluated</p>
+                    <div className="flex flex-wrap gap-2">
+                      {currentQuestion.evaluationCriteria.map((criterion, index) => (
+                        <span key={index} className="inline-flex items-center rounded-full bg-white border border-amber-200 text-amber-900 px-3 py-1 text-xs font-medium">
+                          {criterion}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {error && (
-                  <div className="flex items-center space-x-2 text-red-600">
+                  <div className="flex items-center space-x-2 text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     <AlertCircle className="h-4 w-4" />
                     <span className="text-sm">{error}</span>
                   </div>
@@ -632,58 +638,73 @@ const InterviewSession = () => {
               </div>
             </div>
 
-            {/* Navigation Controls */}
-            <div className="flex justify-between">
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
                 onClick={previousQuestion}
                 disabled={currentQuestionIndex === 0}
-                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-5 py-3 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                Previous
+                Previous Question
               </button>
-              
-              <div className="flex space-x-4">
+
+              <div className="flex flex-wrap gap-3 sm:justify-end">
+                {currentQuestionIndex < questions.length - 1 && (
+                  <button
+                    onClick={nextQuestion}
+                    className="px-5 py-3 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2"
+                  >
+                    <span>Skip for now</span>
+                    <SkipForward className="h-4 w-4" />
+                  </button>
+                )}
+
                 <button
                   onClick={submitAnswer}
                   disabled={!currentAnswer.trim() || isSubmitting}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                  className="px-5 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
                   {isSubmitting && <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>}
                   <span>{isSubmitting ? 'Submitting...' : 'Submit Answer'}</span>
                 </button>
-                
-                {currentQuestionIndex < questions.length - 1 && (
-                  <button
-                    onClick={nextQuestion}
-                    className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2"
-                  >
-                    <span>Skip</span>
-                    <SkipForward className="h-4 w-4" />
-                  </button>
-                )}
               </div>
             </div>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Interview Info */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">Interview Details</h3>
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+              <h3 className="text-base font-semibold text-slate-900 mb-4">Session Snapshot</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500">Answered</p>
+                  <p className="text-xl font-semibold text-slate-900">{answeredCount}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500">Remaining</p>
+                  <p className="text-xl font-semibold text-slate-900">{Math.max(questions.length - answeredCount, 0)}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 col-span-2">
+                  <p className="text-xs text-slate-500">Question Timer</p>
+                  <p className="text-xl font-semibold text-slate-900 font-mono">{formatTime(questionElapsed)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+              <h3 className="text-base font-semibold text-slate-900 mb-4">Interview Details</h3>
               <div className="space-y-3">
                 <div>
-                  <span className="text-sm text-gray-600">Position:</span>
-                  <p className="font-medium">{interview?.setup?.jobRole}</p>
+                  <span className="text-sm text-slate-500">Position</span>
+                  <p className="font-medium text-slate-800">{interview?.setup?.jobRole}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-600">Type:</span>
-                  <p className="font-medium capitalize">{interview?.setup?.interviewType}</p>
+                  <span className="text-sm text-slate-500">Type</span>
+                  <p className="font-medium text-slate-800 capitalize">{interview?.setup?.interviewType}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-600">Skills:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <span className="text-sm text-slate-500">Skills</span>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
                     {interview?.setup?.skills?.map((skill, index) => (
-                      <span key={index} className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded">
+                      <span key={index} className="bg-slate-100 text-slate-700 text-xs px-2.5 py-1 rounded-full">
                         {skill}
                       </span>
                     ))}
@@ -692,34 +713,29 @@ const InterviewSession = () => {
               </div>
             </div>
 
-            {/* Progress Overview */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">Progress</h3>
-              <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+              <h3 className="text-base font-semibold text-slate-900 mb-4">Question Flow</h3>
+              <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
                 {questions.map((question, index) => (
-                  <div key={index} className="flex items-center space-x-3">
-                    <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                      index < currentQuestionIndex 
-                        ? 'bg-green-100 text-green-600' 
-                        : index === currentQuestionIndex 
-                        ? 'bg-blue-100 text-blue-600' 
-                        : 'bg-gray-100 text-gray-400'
-                    }`}>
+                  <div key={index} className="flex items-center gap-3">
+                    <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${index < currentQuestionIndex
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : index === currentQuestionIndex
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
                       {index < currentQuestionIndex ? (
                         <CheckCircle2 className="h-4 w-4" />
                       ) : (
-                        <span className="text-xs font-medium">{index + 1}</span>
+                        <span className="text-xs font-semibold">{index + 1}</span>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm truncate ${
-                        index === currentQuestionIndex ? 'font-medium text-blue-600' : 'text-gray-600'
-                      }`}>
-                        {question.category}
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm truncate ${index === currentQuestionIndex ? 'font-semibold text-blue-700' : 'text-slate-700'
+                        }`}>
+                        {question.category || `Question ${index + 1}`}
                       </p>
-                      {answers[index] && (
-                        <p className="text-xs text-green-600">Answered</p>
-                      )}
+                      {answers[index] && <p className="text-xs text-emerald-600">Answered</p>}
                     </div>
                   </div>
                 ))}

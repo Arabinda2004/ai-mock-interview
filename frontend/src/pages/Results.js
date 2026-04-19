@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Trophy,
-  Target,
-  Clock,
-  CheckCircle2,
   AlertCircle,
-  TrendingUp,
-  Award,
-  Download,
-  Share2,
-  Home,
+  ArrowRight,
   BarChart3,
-  Calendar
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Download,
+  Home,
+  Share2,
+  Target,
+  TrendingUp,
+  Trophy,
+  Zap
 } from 'lucide-react';
 import interviewService from '../services/interviewService';
 
@@ -21,7 +22,7 @@ const Results = () => {
   const location = useLocation();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showAllQuestions, setShowAllQuestions] = useState(true);
+  const [showAllQuestions, setShowAllQuestions] = useState(false);
   const [error, setError] = useState(null);
   const [shouldRedirect, setShouldRedirect] = useState(false);
 
@@ -46,10 +47,10 @@ const Results = () => {
 
       // Get results from location state or localStorage
       const resultData = location.state?.results || interviewService.getLastResults();
-      
+
       console.log('📊 Results page - received data:', resultData);
       console.log('📊 Location state:', location.state);
-      
+
       // Log the structure to help debug
       if (resultData) {
         console.log('📊 Data structure:', {
@@ -61,7 +62,7 @@ const Results = () => {
           sampleQuestion: resultData.questions?.[0]
         });
       }
-      
+
       if (!resultData) {
         console.log('❌ No result data found, redirecting to dashboard');
         console.log('❌ Location:', location);
@@ -73,9 +74,9 @@ const Results = () => {
 
       // Check if we have an interviewId (either directly or as id field)
       const interviewId = resultData.interviewId || resultData.id;
-      
+
       console.log('🔍 Interview ID:', interviewId);
-      
+
       if (!interviewId) {
         console.log('❌ No interview ID found in data');
         setError('Interview ID not found. Unable to load details.');
@@ -86,14 +87,14 @@ const Results = () => {
       // If we have an interviewId but incomplete data (no questions), fetch full details from API
       const hasQuestions = resultData.questions && Array.isArray(resultData.questions) && resultData.questions.length > 0;
       console.log('🔍 Has questions?', hasQuestions, 'Questions:', resultData.questions);
-      
+
       if (!hasQuestions) {
         console.log('📡 Fetching complete interview details from API for interview:', interviewId);
-        
+
         try {
           const response = await interviewService.getInterviewDetails(interviewId);
           console.log('✅ API Response:', response);
-          
+
           if (response.success && response.data) {
             console.log('✅ Setting results from API');
             setResults(response.data);
@@ -116,7 +117,7 @@ const Results = () => {
         setResults(resultData);
         saveToHistory(resultData);
       }
-      
+
       setLoading(false);
     } catch (error) {
       console.error('❌ Error loading results:', error);
@@ -141,24 +142,144 @@ const Results = () => {
     }
   };
 
-  const getScoreColor = (score) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
+  const normalizePercent = (value, fallback = 0) => {
+    if (value === null || value === undefined || value === '') return fallback;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(0, Math.min(100, Math.round(parsed)));
   };
 
-  const getScoreBg = (score) => {
-    if (score >= 80) return 'bg-green-50 border-green-200';
-    if (score >= 60) return 'bg-yellow-50 border-yellow-200';
-    return 'bg-red-50 border-red-200';
+  const scoreToPercent = (value, maxScore = 10) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 0;
+
+    // If the score is already expressed as a percentage, keep it.
+    if (parsed > 10) {
+      return normalizePercent(parsed, 0);
+    }
+
+    const safeMax = Number(maxScore) > 0 ? Number(maxScore) : 10;
+    return normalizePercent((parsed / safeMax) * 100, 0);
   };
 
-  const getPerformanceLevel = (score) => {
-    if (score >= 90) return 'Excellent';
-    if (score >= 80) return 'Very Good';
-    if (score >= 70) return 'Good';
-    if (score >= 60) return 'Satisfactory';
-    return 'Needs Improvement';
+  const qualityFromPercent = (scorePercent) => {
+    if (scorePercent >= 90) return 'Excellent';
+    if (scorePercent >= 70) return 'Good';
+    if (scorePercent >= 50) return 'Average';
+    if (scorePercent >= 30) return 'Below Average';
+    return 'Poor';
+  };
+
+  const getConfidenceLevelFromPercent = (confidencePercent) => {
+    if (confidencePercent >= 85) return 'High';
+    if (confidencePercent >= 65) return 'Moderate';
+    if (confidencePercent >= 40) return 'Low';
+    return 'Very Low';
+  };
+
+  const getPotentialTag = (score) => {
+    if (score >= 85) {
+      return { label: 'HIGH POTENTIAL', className: 'bg-emerald-100 text-emerald-700' };
+    }
+
+    if (score >= 70) {
+      return { label: 'STRONG POTENTIAL', className: 'bg-cyan-100 text-cyan-700' };
+    }
+
+    if (score >= 55) {
+      return { label: 'DEVELOPING', className: 'bg-amber-100 text-amber-700' };
+    }
+
+    return { label: 'NEEDS COACHING', className: 'bg-rose-100 text-rose-700' };
+  };
+
+  const getRatingLabel = (scorePercent) => {
+    if (scorePercent >= 85) return 'Expert';
+    if (scorePercent >= 70) return 'Strong';
+    if (scorePercent >= 55) return 'Developing';
+    return 'Foundational';
+  };
+
+  const getQuestionScoreTone = (score) => {
+    if (score >= 85) {
+      return {
+        chipClass: 'bg-emerald-100 text-emerald-700',
+        scoreClass: 'text-emerald-700'
+      };
+    }
+
+    if (score >= 70) {
+      return {
+        chipClass: 'bg-cyan-100 text-cyan-700',
+        scoreClass: 'text-cyan-700'
+      };
+    }
+
+    if (score >= 55) {
+      return {
+        chipClass: 'bg-amber-100 text-amber-700',
+        scoreClass: 'text-amber-700'
+      };
+    }
+
+    return {
+      chipClass: 'bg-rose-100 text-rose-700',
+      scoreClass: 'text-rose-700'
+    };
+  };
+
+  const getQualityTone = (quality) => {
+    const clean = String(quality || '').toLowerCase();
+
+    if (clean === 'excellent') return 'bg-emerald-100 text-emerald-700';
+    if (clean === 'good') return 'bg-cyan-100 text-cyan-700';
+    if (clean === 'average') return 'bg-amber-100 text-amber-700';
+    if (clean === 'below average') return 'bg-orange-100 text-orange-700';
+    return 'bg-rose-100 text-rose-700';
+  };
+
+  const formatInterviewType = (value) => {
+    const normalized = String(value || 'Mixed').replace(/[_-]+/g, ' ').trim();
+    if (!normalized) return 'Mixed';
+
+    return normalized
+      .split(' ')
+      .filter(Boolean)
+      .map((item) => item.charAt(0).toUpperCase() + item.slice(1).toLowerCase())
+      .join(' ');
+  };
+
+  const formatRecordedDate = (value) => {
+    const safeDate = value ? new Date(value) : new Date();
+    if (Number.isNaN(safeDate.getTime())) {
+      return 'Recorded recently';
+    }
+
+    return `Recorded ${safeDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })}`;
+  };
+
+  const toShortAssessment = (value, fallback) => {
+    if (!value) return fallback;
+
+    const clean = String(value).trim();
+    if (!clean) return fallback;
+
+    return clean.length > 20 ? fallback : clean;
+  };
+
+  const truncateText = (value, maxLength = 260) => {
+    const clean = String(value || '').trim();
+    if (clean.length <= maxLength) return clean;
+    return `${clean.slice(0, maxLength).trim()}...`;
+  };
+
+  const getSignalBarStates = (scorePercent) => {
+    const activeBars = Math.max(1, Math.min(5, Math.round(scorePercent / 20)));
+    return Array.from({ length: 5 }, (_, index) => index < activeBars);
   };
 
   const downloadResults = () => {
@@ -212,32 +333,43 @@ const Results = () => {
   const answeredQuestions = results.answeredQuestions || results.questions?.filter(q => q.answer || q.userAnswer).length || 0;
   const overallScore = results.overallScore || results.score || 0;
   const timeTaken = results.timeTaken ? results.timeTaken : (results.actualDuration ? `${results.actualDuration} min` : '0 min');
+  const interviewRole = results.jobRole || results.role || results.interviewSetup?.jobRole || 'Interview Session';
+  const interviewType = formatInterviewType(results.interviewType || results.interviewSetup?.interviewType || 'Technical');
+  const recordedLabel = formatRecordedDate(results.date || results.createdAt || results.completedAt);
 
   // Prepare question results for display - handle multiple data structures
   let questionResults = [];
-  
+
   // NEW: Check if questions have embedded evaluation data (from backend submit endpoint)
   if (results.questions && Array.isArray(results.questions) && results.questions.length > 0) {
     questionResults = results.questions.map((q, index) => {
       // Check if question has answer and evaluation data
       const hasAnswer = q.answer || q.userAnswer;
       const evaluation = q.evaluation || q.aiReview;
-      
+
       if (!hasAnswer && !evaluation) {
         console.warn(`Question ${index + 1} has no answer or evaluation`);
         return null;
       }
-      
-      // Score handling: evaluation.score is already 0-100 percentage from backend
-      const score = evaluation?.score || 0;
-      
+
+      // `evaluation.score` in backend payload is already a percentage in this path.
+      // Prefer rawScore (0-10) when present; otherwise normalize score as percent.
+      const score = evaluation?.rawScore !== undefined && evaluation?.rawScore !== null
+        ? scoreToPercent(evaluation.rawScore, 10)
+        : normalizePercent(evaluation?.score, 0);
+      const missingPoints = Array.isArray(evaluation?.missingPoints)
+        ? evaluation.missingPoints
+        : Array.isArray(evaluation?.improvements)
+          ? evaluation.improvements
+          : [];
+
       return {
         question: q.questionText || q.question || 'Question not available',
         userAnswer: q.userAnswer || q.answer || 'Not answered',
-        score: score, // Already a percentage (0-100)
+        score,
         feedback: evaluation?.feedback || 'Evaluation pending',
-        quality: evaluation?.quality || 'Not Evaluated',
-        missingPoints: evaluation?.missingPoints || evaluation?.improvements || [],
+        quality: evaluation?.quality || qualityFromPercent(score),
+        missingPoints,
         improvementTip: evaluation?.improvementTip || evaluation?.suggestions?.join('. ') || ''
       };
     }).filter(Boolean); // Remove null entries
@@ -250,24 +382,63 @@ const Results = () => {
     questionResults = results.answers.map((answer, index) => {
       const question = results.questions?.[index];
       if (!question) return null;
-      
+
       // Score conversion: if score > 10, it's already a percentage; otherwise convert
       const rawScore = answer.aiReview?.score || 0;
       const maxScore = answer.aiReview?.maxScore || 10;
-      const percentageScore = rawScore > 10 ? rawScore : Math.round((rawScore / maxScore) * 100);
-      
+      const percentageScore = scoreToPercent(rawScore, maxScore);
+
       return {
         question: question.questionText || question.question || 'Question not available',
         userAnswer: answer.userAnswer || 'Not answered',
         score: percentageScore,
         feedback: answer.aiReview?.feedback || 'Evaluation pending',
-        quality: answer.aiReview?.quality || 'Not Evaluated',
+        quality: answer.aiReview?.quality || qualityFromPercent(percentageScore),
         missingPoints: answer.aiReview?.missingPoints || [],
         improvementTip: answer.aiReview?.improvementTip || ''
       };
     }).filter(Boolean);
   }
-  
+
+  const derivedAccuracyRate = questionResults.length > 0
+    ? Math.round((questionResults.filter((item) => Number(item.score) >= 60).length / questionResults.length) * 100)
+    : (totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0);
+
+  const accuracyRate = normalizePercent(results.accuracyRate, derivedAccuracyRate);
+  const confidenceScore = normalizePercent(
+    results.confidenceScore,
+    Math.round((overallScore * 0.7) + (accuracyRate * 0.3))
+  );
+  const confidenceLevel = results.confidenceLevel || getConfidenceLevelFromPercent(confidenceScore);
+  const technicalScore = normalizePercent(results.technicalScore, overallScore);
+  const communicationScore = normalizePercent(results.communicationScore, overallScore);
+  const technicalLevel = toShortAssessment(results.technicalAssessment, getRatingLabel(technicalScore));
+  const communicationLevel = toShortAssessment(results.communicationAssessment, getRatingLabel(communicationScore));
+  const recommendation = results.recommendation || results.verdict || 'Proceed with focused preparation before your next interview.';
+  const avgResponseTime = results.avgResponseTime || results.averageResponseTime || '2m 30s';
+  const potentialTag = getPotentialTag(overallScore);
+  const hasMoreQuestions = questionResults.length > 3;
+  const visibleQuestionResults = showAllQuestions ? questionResults : questionResults.slice(0, 3);
+  const strengths = results.strengths && results.strengths.length > 0
+    ? results.strengths
+    : [
+      'Clear technical articulation',
+      'Structured reasoning',
+      'Confident response framing'
+    ];
+  const improvements = results.improvements && results.improvements.length > 0
+    ? results.improvements
+    : [
+      'Use more quantified outcomes',
+      'Add concise real project examples',
+      'Tighten response structure'
+    ];
+  const overallFeedbackSummary =
+    results.detailedFeedback ||
+    results.overallFeedback ||
+    results.results?.overallFeedback ||
+    '';
+
   console.log('📊 Question results for display:', {
     totalQuestions,
     questionResultsCount: questionResults.length,
@@ -275,308 +446,335 @@ const Results = () => {
   });
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Interview Results</h1>
-          <p className="text-gray-600 mt-1">Your performance summary and detailed feedback</p>
-        </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={downloadResults}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Download className="h-4 w-4" />
-            <span>Download</span>
-          </button>
-          <button
-            onClick={shareResults}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Share2 className="h-4 w-4" />
-            <span>Share</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Overall Score Card */}
-      <div className={`card border-2 ${getScoreBg(overallScore)}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-6">
-            <div className="p-4 bg-white rounded-full">
-              <Trophy className={`h-12 w-12 ${getScoreColor(overallScore)}`} />
+    <div className="mx-auto max-w-[1180px] space-y-6 pb-8">
+      <section className="rounded-3xl border border-slate-200 bg-slate-100/80 p-5 sm:p-7">
+        <div className="grid items-start gap-6 lg:grid-cols-[1.75fr,0.95fr]">
+          <div>
+            <div className="mb-4 flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-blue-700">Session Complete</span>
+              <span>{recordedLabel}</span>
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Overall Score</h2>
-              <p className={`text-4xl font-bold mt-2 ${getScoreColor(overallScore)}`}>
-                {overallScore}%
-              </p>
-              <p className="text-lg text-gray-600 mt-1">
-                {getPerformanceLevel(overallScore)}
-              </p>
+
+            <h1 className="text-3xl font-semibold leading-tight text-slate-900 sm:text-[46px] sm:leading-[1.04]">
+              {interviewRole}
+              <br />
+              <span className="text-blue-700">{interviewType} Interview Results</span>
+            </h1>
+
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                onClick={downloadResults}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+              >
+                <Download className="h-4 w-4" />
+                Download Report
+              </button>
+
+              <button
+                onClick={shareResults}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </button>
+
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold text-blue-700 transition hover:text-blue-800"
+              >
+                Back to Dashboard
+                <ArrowRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
-          <div className="text-right space-y-3">
-            <div className="flex items-center space-x-2 text-gray-700">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <span className="text-lg">
-                {answeredQuestions} of {totalQuestions} Questions Answered
+
+          <aside className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-5xl font-semibold tracking-tight text-blue-700 sm:text-6xl">
+                {overallScore}
+                <span className="text-2xl text-slate-600">/100</span>
+              </p>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.1em] ${potentialTag.className}`}>
+                {potentialTag.label}
               </span>
             </div>
-            <div className="flex items-center space-x-2 text-gray-700">
-              <Clock className="h-5 w-5 text-blue-600" />
-              <span className="text-lg">Time Taken: {timeTaken}</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Statistics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Average Response Time */}
-        <div className="card">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <Clock className="h-6 w-6 text-blue-600" />
+            <div className="mt-6 space-y-4 text-sm">
+              <div className="flex items-center justify-between text-slate-600">
+                <span>Questions Answered</span>
+                <span className="font-semibold text-slate-900">{answeredQuestions} / {totalQuestions}</span>
+              </div>
+              <div className="h-1 rounded-full bg-slate-200">
+                <div
+                  className="h-1 rounded-full bg-cyan-600"
+                  style={{ width: `${totalQuestions > 0 ? (answeredQuestions / totalQuestions) * 100 : 0}%` }}
+                ></div>
+              </div>
+              <div className="flex items-center justify-between text-slate-600">
+                <span>Time Taken</span>
+                <span className="font-semibold text-slate-900">{timeTaken}</span>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Avg Response Time</h3>
-          </div>
-          <p className="text-3xl font-bold text-blue-600">
-            {results.avgResponseTime || '2m 30s'}
-          </p>
-          <p className="text-sm text-gray-600 mt-2">Per question</p>
+          </aside>
         </div>
+      </section>
 
-        {/* Accuracy Rate */}
-        <div className="card">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-2 bg-green-50 rounded-lg">
-              <Target className="h-6 w-6 text-green-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900">Accuracy Rate</h3>
+      <section className="grid gap-4 md:grid-cols-3">
+        <article className="rounded-2xl border border-slate-200 bg-slate-100/80 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <Clock className="h-4 w-4 text-blue-600" />
+            Avg Response
           </div>
-          <p className="text-3xl font-bold text-green-600">
-            {results.accuracyRate || '85'}%
-          </p>
-          <p className="text-sm text-gray-600 mt-2">Correct responses</p>
-        </div>
+          <p className="mt-1 text-3xl font-semibold text-slate-900">{avgResponseTime}</p>
+        </article>
 
-        {/* Confidence Level */}
-        <div className="card">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-2 bg-purple-50 rounded-lg">
-              <TrendingUp className="h-6 w-6 text-purple-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900">Confidence</h3>
+        <article className="rounded-2xl border border-slate-200 bg-slate-100/80 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            Accuracy
           </div>
-          <p className="text-3xl font-bold text-purple-600">
-            {results.confidenceLevel || 'High'}
-          </p>
-          <p className="text-sm text-gray-600 mt-2">Based on answer quality</p>
-        </div>
-      </div>
+          <p className="mt-1 text-3xl font-semibold text-slate-900">{accuracyRate}%</p>
+        </article>
 
-      {/* Strengths and Areas for Improvement */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Strengths */}
-        <div className="card">
-          <div className="flex items-center space-x-2 mb-4">
-            <Award className="h-6 w-6 text-green-600" />
-            <h3 className="text-xl font-semibold text-gray-900">Strengths</h3>
+        <article className="rounded-2xl border border-slate-200 bg-slate-100/80 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <TrendingUp className="h-4 w-4 text-amber-600" />
+            Confidence
           </div>
-          <ul className="space-y-3">
-            {(results.strengths || [
-              'Clear and concise communication',
-              'Good technical knowledge',
-              'Structured problem-solving approach'
-            ]).map((strength, index) => (
-              <li key={index} className="flex items-start space-x-2">
-                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700">{strength}</span>
+          <p className="mt-1 text-3xl font-semibold text-slate-900">{confidenceScore}%</p>
+          <p className="mt-1 text-sm font-medium text-slate-600">{confidenceLevel} confidence</p>
+        </article>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        <article className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            Key Strengths
+          </h2>
+          <ul className="mt-4 space-y-3">
+            {strengths.slice(0, 4).map((strength, index) => (
+              <li key={index} className="flex items-start gap-2 text-sm text-slate-700">
+                <span className="mt-1.5 h-2 w-2 rounded-full bg-emerald-600"></span>
+                <span>{strength}</span>
               </li>
             ))}
           </ul>
-        </div>
+        </article>
 
-        {/* Areas for Improvement */}
-        <div className="card">
-          <div className="flex items-center space-x-2 mb-4">
-            <AlertCircle className="h-6 w-6 text-orange-600" />
-            <h3 className="text-xl font-semibold text-gray-900">Areas for Improvement</h3>
-          </div>
-          <ul className="space-y-3">
-            {(results.improvements || [
-              'Provide more detailed examples',
-              'Consider edge cases in solutions',
-              'Improve time complexity analysis'
-            ]).map((improvement, index) => (
-              <li key={index} className="flex items-start space-x-2">
-                <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-700">{improvement}</span>
+        <article className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+            <Target className="h-5 w-5 text-amber-600" />
+            Growth Opportunities
+          </h2>
+          <ul className="mt-4 space-y-3">
+            {improvements.slice(0, 4).map((improvement, index) => (
+              <li key={index} className="flex items-start gap-2 text-sm text-slate-700">
+                <span className="mt-1.5 h-2 w-2 rounded-full bg-amber-600"></span>
+                <span>{improvement}</span>
               </li>
             ))}
           </ul>
-        </div>
-      </div>
+        </article>
 
-      {/* Question-by-Question Results */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-2">
-            <BarChart3 className="h-6 w-6 text-blue-600" />
-            <h3 className="text-xl font-semibold text-gray-900">Detailed Question Analysis</h3>
+        <article className="rounded-3xl border border-slate-800 bg-slate-800 p-5 text-slate-100 shadow-lg shadow-slate-300/35">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Overall Assessment</h2>
+
+          <div className="mt-5 space-y-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Technical Skills</p>
+                <p className="text-2xl font-semibold text-white">{technicalLevel}</p>
+              </div>
+              <div className="flex items-end gap-1">
+                {getSignalBarStates(technicalScore).map((isActive, index) => (
+                  <span
+                    key={index}
+                    className={`w-1.5 rounded-sm ${isActive ? (index % 2 === 0 ? 'h-5 bg-cyan-300' : 'h-4 bg-cyan-300') : 'h-3 bg-slate-600'}`}
+                  ></span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Communication</p>
+                <p className="text-2xl font-semibold text-white">{communicationLevel}</p>
+              </div>
+              <div className="flex items-end gap-1">
+                {getSignalBarStates(communicationScore).map((isActive, index) => (
+                  <span
+                    key={index}
+                    className={`w-1.5 rounded-sm ${isActive ? (index % 2 === 0 ? 'h-5 bg-cyan-300' : 'h-4 bg-cyan-300') : 'h-3 bg-slate-600'}`}
+                  ></span>
+                ))}
+              </div>
+            </div>
           </div>
-          {questionResults.length > 3 && (
-            <button
-              onClick={() => setShowAllQuestions(!showAllQuestions)}
-              className="text-blue-600 hover:text-blue-700 font-medium"
-            >
-              {showAllQuestions ? 'Show Less' : 'Show All Questions'}
-            </button>
-          )}
+
+          <div className="mt-5 border-t border-slate-700 pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Recommendation</p>
+            <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-emerald-300">
+              <CheckCircle2 className="h-4 w-4" />
+              {recommendation}
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-3xl font-semibold text-slate-900">Question-by-Question Analysis</h2>
+          <div className="h-px flex-1 bg-slate-300"></div>
         </div>
 
-        {questionResults.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-600">No question details available for this interview.</p>
-          </div>
-        ) : (
+        <div className="grid items-start gap-4 lg:grid-cols-[1.7fr,0.9fr]">
           <div className="space-y-4">
-            {questionResults.slice(0, showAllQuestions ? undefined : 3).map((qResult, index) => (
-              <div
-                key={index}
-                className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
-                        Question {index + 1}
-                      </span>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        qResult.score >= 80 ? 'bg-green-100 text-green-700' :
-                        qResult.score >= 60 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        Score: {qResult.score}%
-                      </span>
+            {questionResults.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
+                No question-level analysis is available for this interview.
+              </div>
+            ) : (
+              visibleQuestionResults.map((qResult, index) => {
+                const scoreTone = getQuestionScoreTone(qResult.score);
+                const isCondensed = !showAllQuestions && index > 0;
+
+                if (isCondensed) {
+                  return (
+                    <article key={index} className="rounded-3xl border border-slate-200 bg-slate-100/80 p-5">
+                      <div className="mb-4 flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-md bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">Q{index + 1}</span>
+                          {qResult.quality && (
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getQualityTone(qResult.quality)}`}>
+                              {qResult.quality}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-3xl font-semibold ${scoreTone.scoreClass}`}>{qResult.score}</p>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Score</p>
+                        </div>
+                      </div>
+
+                      <p className="text-xl font-medium text-slate-800">"{qResult.question}"</p>
+                      <p className="mt-3 text-sm text-slate-500">Expand to see full analysis.</p>
+                    </article>
+                  );
+                }
+
+                return (
+                  <article key={index} className="rounded-3xl border border-slate-200 bg-slate-100/80 p-5">
+                    <div className="mb-4 flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">Q{index + 1}</span>
+                        {qResult.quality && (
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getQualityTone(qResult.quality)}`}>
+                            {qResult.quality}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-3xl font-semibold ${scoreTone.scoreClass}`}>{qResult.score}</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Score</p>
+                      </div>
                     </div>
-                    <p className="text-gray-900 font-medium mb-2">{qResult.question}</p>
-                  </div>
-                </div>
 
-                <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                  <p className="text-sm text-gray-600 mb-1">Your Answer:</p>
-                  <p className="text-gray-900">{qResult.userAnswer}</p>
-                </div>
+                    <p className="text-2xl font-medium leading-snug text-slate-800">"{qResult.question}"</p>
 
-                <div className="bg-blue-50 rounded-lg p-3 mb-3">
-                  <p className="text-sm font-medium text-blue-900 mb-1">AI Feedback:</p>
-                  <p className="text-blue-800">{qResult.feedback}</p>
-                </div>
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Your Response Excerpt</p>
+                      <p className="mt-2 text-sm leading-7 text-slate-700">"{truncateText(qResult.userAnswer || 'No answer provided.')}"</p>
+                    </div>
 
-                {qResult.quality && (
-                  <div className="mb-3">
-                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                      qResult.quality === 'Excellent' ? 'bg-green-100 text-green-800' :
-                      qResult.quality === 'Good' ? 'bg-blue-100 text-blue-800' :
-                      qResult.quality === 'Average' ? 'bg-yellow-100 text-yellow-800' :
-                      qResult.quality === 'Below Average' ? 'bg-orange-100 text-orange-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      Quality: {qResult.quality}
-                    </span>
-                  </div>
-                )}
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-700">AI Feedback</p>
+                        <p className="mt-1 text-sm text-cyan-900">{qResult.feedback || 'Feedback unavailable.'}</p>
+                      </div>
 
-                {qResult.missingPoints && qResult.missingPoints.length > 0 && (
-                  <div className="bg-orange-50 rounded-lg p-3 mb-3">
-                    <p className="text-sm font-medium text-orange-900 mb-2">Missing Points:</p>
-                    <ul className="list-disc list-inside space-y-1">
-                      {qResult.missingPoints.map((point, i) => (
-                        <li key={i} className="text-orange-800 text-sm">{point}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                      <div className="rounded-2xl border border-blue-300 bg-blue-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">Improvement Tip</p>
+                        <p className="mt-1 text-sm text-blue-900">{qResult.improvementTip || 'Use STAR framing and include one measurable outcome.'}</p>
+                      </div>
+                    </div>
 
-                {qResult.improvementTip && (
-                  <div className="bg-purple-50 rounded-lg p-3">
-                    <p className="text-sm font-medium text-purple-900 mb-1">💡 Improvement Tip:</p>
-                    <p className="text-purple-800 text-sm">{qResult.improvementTip}</p>
-                  </div>
-                )}
+                    {qResult.missingPoints && qResult.missingPoints.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Missing Points</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                          {qResult.missingPoints.slice(0, 3).map((point, pointIndex) => (
+                            <li key={pointIndex}>{point}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </article>
+                );
+              })
+            )}
+
+            {hasMoreQuestions && (
+              <button
+                onClick={() => setShowAllQuestions(!showAllQuestions)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                {showAllQuestions ? 'Show Less Analysis' : 'Show Full Analysis'}
+                <BarChart3 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <aside className="space-y-4 lg:sticky lg:top-24">
+            <article className="rounded-3xl border border-slate-200 bg-blue-100/70 p-5">
+              <div className="mb-3 flex items-center gap-2 text-blue-700">
+                <Trophy className="h-5 w-5" />
+                <p className="text-sm font-semibold uppercase tracking-[0.14em]">Ready to improve?</p>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Detailed Feedback Section */}
-      {(results.detailedFeedback || results.overallFeedback || results.results?.overallFeedback) && (
-        <div className="card">
-          <div className="flex items-center space-x-2 mb-4">
-            <BarChart3 className="h-6 w-6 text-purple-600" />
-            <h3 className="text-xl font-semibold text-gray-900">Overall Assessment</h3>
-          </div>
-          <div className="space-y-4">
-            <div className="bg-purple-50 rounded-lg p-4">
-              <p className="text-gray-800 whitespace-pre-line">
-                {results.detailedFeedback || results.overallFeedback || results.results?.overallFeedback}
+              <p className="text-sm leading-6 text-slate-700">
+                Your confidence score is {confidenceScore}%. Start a new targeted session to improve weak signals and increase consistency.
               </p>
-            </div>
-            
-            {(results.technicalAssessment || results.results?.technicalAssessment) && (
-              <div className="bg-blue-50 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">Technical Skills</h4>
-                <p className="text-gray-700">{results.technicalAssessment || results.results?.technicalAssessment}</p>
-              </div>
-            )}
-            
-            {(results.communicationAssessment || results.results?.communicationAssessment) && (
-              <div className="bg-green-50 rounded-lg p-4">
-                <h4 className="font-semibold text-green-900 mb-2">Communication Skills</h4>
-                <p className="text-gray-700">{results.communicationAssessment || results.results?.communicationAssessment}</p>
-              </div>
-            )}
-            
-            {(results.recommendation || results.results?.recommendation) && (
-              <div className="bg-yellow-50 rounded-lg p-4">
-                <h4 className="font-semibold text-yellow-900 mb-2">Recommendation</h4>
-                <p className="text-gray-700">{results.recommendation || results.results?.recommendation}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+              <button
+                onClick={() => navigate('/interview-setup')}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Start New Interview
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </article>
 
-      {/* Action Buttons */}
-      <div className="flex items-center justify-between pt-6 border-t">
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="flex items-center space-x-2 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          <Home className="h-5 w-5" />
-          <span>Back to Dashboard</span>
-        </button>
+            <article className="rounded-3xl border border-slate-200 bg-white p-5">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Session Actions</h3>
+              <div className="mt-3 space-y-2">
+                <button
+                  onClick={() => navigate('/history')}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Calendar className="h-4 w-4" />
+                  View Interview History
+                </button>
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Home className="h-4 w-4" />
+                  Back to Dashboard
+                </button>
+              </div>
+            </article>
 
-        <div className="flex space-x-3">
-          <button
-            onClick={() => navigate('/history')}
-            className="flex items-center space-x-2 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Calendar className="h-5 w-5" />
-            <span>View History</span>
-          </button>
-          <button
-            onClick={() => navigate('/interview-setup')}
-            className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <span>Start New Interview</span>
-          </button>
+            {overallFeedbackSummary && (
+              <article className="rounded-3xl border border-slate-200 bg-white p-5">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <Zap className="h-4 w-4 text-amber-600" />
+                  Overall Feedback
+                </h3>
+                <p className="text-sm leading-6 text-slate-700">{truncateText(overallFeedbackSummary, 220)}</p>
+              </article>
+            )}
+          </aside>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

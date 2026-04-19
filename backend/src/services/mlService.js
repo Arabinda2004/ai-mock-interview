@@ -1,10 +1,22 @@
 const logger = require('../utils/logger');
 const QuestionTemplate = require('../models/QuestionTemplate');
 
+const STOP_WORDS = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'for', 'from', 'how', 'i',
+    'if', 'in', 'is', 'it', 'its', 'me', 'my', 'of', 'on', 'or', 'our', 'so', 'the', 'their', 'them',
+    'there', 'these', 'they', 'this', 'those', 'to', 'was', 'we', 'what', 'when', 'where', 'which',
+    'who', 'why', 'with', 'would', 'you', 'your'
+]);
+
+const GENERIC_QUESTION_TOKENS = new Set([
+    'between', 'common', 'core', 'different', 'difference', 'explain', 'important', 'most', 'real', 'should',
+    'useful', 'works', 'project', 'projects', 'system', 'systems'
+]);
+
 class MLService {
     constructor() {
         this.baseUrl = (process.env.ML_SERVICE_URL || 'http://localhost:8000').replace(/\/+$/, '');
-        this.timeoutMs = parseInt(process.env.ML_SERVICE_TIMEOUT_MS, 10) || 3500;
+        this.timeoutMs = parseInt(process.env.ML_SERVICE_TIMEOUT_MS, 10) || 7000;
         this.modelName = process.env.ML_MODEL_NAME || 'deberta-v3-base';
         this.enabled = process.env.ML_SERVICE_ENABLED !== 'false';
 
@@ -213,7 +225,7 @@ class MLService {
             : [];
 
         if (!this.enabled) {
-            return this.getFallbackSingleEvaluation(question, answer);
+            return this.getFallbackSingleEvaluation(question, answer, expectedConcepts);
         }
 
         try {
@@ -226,7 +238,7 @@ class MLService {
             return this.normalizeSingleEvaluation(raw);
         } catch (error) {
             logger.error('ML service /evaluate failed. Falling back to local scoring:', error.message);
-            return this.getFallbackSingleEvaluation(question, answer);
+            return this.getFallbackSingleEvaluation(question, answer, expectedConcepts);
         }
     }
 
@@ -299,15 +311,26 @@ class MLService {
             const score = this.clampNumber(item.score, 0, 10, 5);
             const technicalScore = this.clampNumber(item.technicalScore, 0, 10, score);
             const communicationScore = this.clampNumber(item.communicationScore, 0, 10, score);
+            const quality = this.normalizeQuality(item.quality, score);
+            const missingPoints = Array.isArray(item.missingPoints)
+                ? item.missingPoints
+                : Array.isArray(item.missingConcepts)
+                    ? item.missingConcepts
+                    : Array.isArray(item.improvements)
+                        ? item.improvements
+                        : [];
 
             return {
                 questionId,
                 score: this.round1(score),
                 technicalScore: this.round1(technicalScore),
                 communicationScore: this.round1(communicationScore),
+                quality,
                 strengths: Array.isArray(item.strengths) ? item.strengths : [],
                 improvements: Array.isArray(item.improvements) ? item.improvements : [],
-                feedback: item.feedback || 'Answer evaluated.'
+                missingPoints,
+                feedback: item.feedback || 'Answer evaluated.',
+                improvementTip: item.improvementTip || this.defaultImprovementTip(quality)
             };
         });
 
@@ -348,16 +371,27 @@ class MLService {
                 answerItem.questionId ||
                 `question_${index + 1}`;
 
-            const single = this.getFallbackSingleEvaluation(question.question || question.questionText || '', text);
+            const expectedConcepts = Array.isArray(question.expectedConcepts)
+                ? question.expectedConcepts
+                : [];
+
+            const single = this.getFallbackSingleEvaluation(
+                question.question || question.questionText || '',
+                text,
+                expectedConcepts
+            );
 
             return {
                 questionId,
                 score: single.score,
                 technicalScore: single.technicalScore,
                 communicationScore: single.communicationScore,
+                quality: single.quality,
                 strengths: text ? ['Provided an answer'] : [],
                 improvements: single.missingPoints,
-                feedback: single.feedback
+                missingPoints: single.missingPoints,
+                feedback: single.feedback,
+                improvementTip: single.improvementTip
             };
         });
 
@@ -380,42 +414,50 @@ class MLService {
         };
     }
 
-    getFallbackSingleEvaluation(question, answer) {
-        const text = (answer || '').trim();
-        const wordCount = text ? text.split(/\s+/).length : 0;
+    getFallbackSingleEvaluation(question, answer, expectedConcepts = []) {
+        const cleanQuestion = this.normalizeText(question || '');
+        const cleanAnswer = this.normalizeText(answer || '');
 
-        let score = 0;
-        let feedback = 'No answer provided.';
-        let missingPoints = ['Provide an answer relevant to the question'];
+        const normalizedExpectedConcepts = Array.isArray(expectedConcepts)
+            ? expectedConcepts.map((concept) => this.normalizeText(concept)).filter(Boolean)
+            : [];
 
-        if (!text) {
-            score = 0;
-            feedback = 'No answer was provided.';
-        } else if (this.looksIrrelevant(question, text)) {
-            score = 2;
-            feedback = 'Your answer appears to be weakly related to the question.';
-            missingPoints = ['Address the exact topic asked', 'Use correct technical terminology'];
-        } else if (wordCount < 8) {
-            score = 3.5;
-            feedback = 'Your answer is too brief for reliable evaluation.';
-            missingPoints = ['Add definition or explanation', 'Include a practical example'];
-        } else if (wordCount < 25) {
-            score = 5.5;
-            feedback = 'Your answer covers some points but needs more depth.';
-            missingPoints = ['Explain why the concept matters', 'Add implementation details'];
-        } else {
-            score = 7;
-            feedback = 'Your answer is reasonably detailed. Improve precision and completeness for higher scores.';
-            missingPoints = ['Include edge cases', 'Mention trade-offs clearly'];
+        const resolvedExpectedConcepts = normalizedExpectedConcepts.length > 0
+            ? normalizedExpectedConcepts
+            : this.extractExpectedConceptsFromQuestion(cleanQuestion);
+
+        if (!cleanAnswer) {
+            return {
+                score: 0,
+                maxScore: 10,
+                technicalScore: 0,
+                communicationScore: 0,
+                quality: 'Poor',
+                feedback: 'No answer was provided.',
+                missingPoints: resolvedExpectedConcepts.length > 0
+                    ? resolvedExpectedConcepts.slice(0, 5)
+                    : ['Provide an answer relevant to the question'],
+                improvementTip: 'Start with a clear definition, then include one concrete example.'
+            };
         }
 
-        const quality = this.normalizeQuality(null, score);
+        const conceptCoverage = this.getConceptCoverage(resolvedExpectedConcepts, cleanAnswer);
+        const heuristicScores = this.computeHeuristicFallbackScores(
+            cleanQuestion,
+            cleanAnswer,
+            resolvedExpectedConcepts,
+            conceptCoverage
+        );
+
+        const quality = this.normalizeQuality(null, heuristicScores.score);
+        const feedback = this.buildFallbackFeedback(quality, conceptCoverage.missing);
+        const missingPoints = conceptCoverage.missing.slice(0, 5);
 
         return {
-            score: this.round1(score),
+            score: this.round1(heuristicScores.score),
             maxScore: 10,
-            technicalScore: this.round1(score),
-            communicationScore: this.round1(Math.min(10, score + 0.3)),
+            technicalScore: this.round1(heuristicScores.technicalScore),
+            communicationScore: this.round1(heuristicScores.communicationScore),
             quality,
             feedback,
             missingPoints,
@@ -423,16 +465,234 @@ class MLService {
         };
     }
 
-    looksIrrelevant(question, answer) {
-        const questionTokens = (question || '')
-            .toLowerCase()
-            .split(/[^a-z0-9]+/)
-            .filter((token) => token.length > 3);
+    normalizeText(text = '') {
+        return String(text).replace(/\s+/g, ' ').trim();
+    }
 
-        const answerLower = (answer || '').toLowerCase();
-        const overlap = questionTokens.filter((token) => answerLower.includes(token)).length;
+    tokenizeText(text = '', keepStopWords = false) {
+        const normalized = this.normalizeText(text).toLowerCase();
+        const rawTokens = normalized
+            .split(/[^a-z0-9+#.]+/)
+            .filter((token) => token.length > 1);
 
-        return questionTokens.length > 0 && overlap === 0;
+        if (keepStopWords) {
+            return rawTokens;
+        }
+
+        return rawTokens.filter((token) => token.length > 2 && !STOP_WORDS.has(token));
+    }
+
+    extractExpectedConceptsFromQuestion(question = '') {
+        const questionLower = this.normalizeText(question).toLowerCase();
+        const inferred = [];
+
+        const comparisonMatch = questionLower.match(
+            /(?:difference|compare|comparison)\s+between\s+([a-z0-9+#.\-]+)\s+and\s+([a-z0-9+#.\-]+)/
+        );
+        if (comparisonMatch) {
+            comparisonMatch.slice(1).forEach((candidate) => {
+                const normalized = this.normalizeText(candidate);
+                if (normalized && !inferred.includes(normalized)) {
+                    inferred.push(normalized);
+                }
+            });
+        }
+
+        const patternCandidates = [
+            /what is ([a-z0-9+#.\- ]+?)(?:\?|,| and | where | when | in |$)/,
+            /explain ([a-z0-9+#.\- ]+?)(?:\?|,| and | where | when | in |$)/,
+            /define ([a-z0-9+#.\- ]+?)(?:\?|,| and | where | when | in |$)/
+        ];
+
+        for (const pattern of patternCandidates) {
+            const match = questionLower.match(pattern);
+            if (!match) continue;
+
+            const candidate = this.normalizeText(match[1]);
+            if (!candidate) break;
+
+            const candidateTokens = this.tokenizeText(candidate)
+                .filter((token) => !GENERIC_QUESTION_TOKENS.has(token));
+
+            if (candidateTokens.length > 0) {
+                candidateTokens.slice(0, 3).forEach((token) => {
+                    if (!inferred.includes(token)) {
+                        inferred.push(token);
+                    }
+                });
+            } else if (!inferred.includes(candidate)) {
+                inferred.push(candidate);
+            }
+            break;
+        }
+
+        for (const token of this.tokenizeText(questionLower)) {
+            if (GENERIC_QUESTION_TOKENS.has(token)) continue;
+
+            if (!inferred.includes(token)) {
+                inferred.push(token);
+            }
+
+            if (inferred.length >= 5) break;
+        }
+
+        return inferred;
+    }
+
+    conceptMatchesAnswer(concept, answerLower, answerTokenSet) {
+        const normalizeToken = (token) => {
+            if (!token) return token;
+
+            if (token.endsWith('ies') && token.length > 4) {
+                return `${token.slice(0, -3)}y`;
+            }
+            if (token.endsWith('es') && token.length > 4) {
+                return token.slice(0, -2);
+            }
+            if (token.endsWith('s') && token.length > 3) {
+                return token.slice(0, -1);
+            }
+
+            return token;
+        };
+
+        const conceptLower = this.normalizeText(concept).toLowerCase();
+        if (!conceptLower) {
+            return false;
+        }
+
+        if (answerLower.includes(conceptLower)) {
+            return true;
+        }
+
+        const conceptTokensForContains = this.tokenizeText(conceptLower, true).map(normalizeToken);
+        if (conceptTokensForContains.some((token) => token && answerLower.includes(token))) {
+            return true;
+        }
+
+        const normalizedAnswerTokenSet = new Set([...answerTokenSet].map((token) => normalizeToken(token)));
+
+        let conceptTokens = this.tokenizeText(conceptLower, true);
+        const filtered = conceptTokens.filter((token) => !STOP_WORDS.has(token));
+        if (filtered.length > 0) {
+            conceptTokens = filtered;
+        }
+
+        if (conceptTokens.length === 0) {
+            return false;
+        }
+
+        const uniqueConceptTokens = [...new Set(conceptTokens.map((token) => normalizeToken(token)))];
+        const overlap = uniqueConceptTokens.filter((token) => normalizedAnswerTokenSet.has(token)).length;
+        const requiredOverlap = Math.max(1, Math.floor((uniqueConceptTokens.length + 1) / 2));
+
+        return overlap >= requiredOverlap;
+    }
+
+    getConceptCoverage(expectedConcepts, answerText) {
+        const answerLower = String(answerText).toLowerCase();
+        const answerTokenSet = new Set(this.tokenizeText(answerText, true));
+        const present = [];
+        const missing = [];
+
+        (expectedConcepts || []).forEach((concept) => {
+            const conceptClean = this.normalizeText(concept);
+            if (!conceptClean) return;
+
+            if (this.conceptMatchesAnswer(conceptClean, answerLower, answerTokenSet)) {
+                present.push(conceptClean);
+            } else {
+                missing.push(conceptClean);
+            }
+        });
+
+        return { present, missing };
+    }
+
+    computeHeuristicFallbackScores(questionText, answerText, expectedConcepts, conceptCoverage) {
+        const answerTokens = this.tokenizeText(answerText);
+        const questionTokens = this
+            .tokenizeText(questionText)
+            .filter((token) => !GENERIC_QUESTION_TOKENS.has(token));
+
+        const answerTokenSet = new Set(answerTokens);
+        const uniqueQuestionTokens = [...new Set(questionTokens)];
+        const overlapCount = uniqueQuestionTokens.filter((token) => answerTokenSet.has(token)).length;
+        let relevance = uniqueQuestionTokens.length > 0 ? overlapCount / uniqueQuestionTokens.length : 0;
+
+        const wordCount = answerTokens.length;
+        const minOverlapForFloor = uniqueQuestionTokens.length <= 2 ? 1 : 2;
+        if (wordCount >= 35 && overlapCount >= minOverlapForFloor) {
+            relevance = Math.max(relevance, 0.45);
+        }
+
+        const conceptRatio = expectedConcepts.length > 0
+            ? conceptCoverage.present.length / expectedConcepts.length
+            : Math.max(relevance, Math.min(wordCount / 120, 0.35));
+
+        const lengthFactor = Math.min(wordCount / 90, 1.0);
+        const shortAnswerFactor = wordCount < 8 ? 0.35 : (wordCount < 15 ? 0.60 : (wordCount < 25 ? 0.90 : 1.0));
+
+        let technicalScore = 2.5 + (4.5 * conceptRatio) + (2.0 * relevance) + (1.0 * lengthFactor);
+        if (conceptRatio === 0 && relevance < 0.15) {
+            technicalScore *= 0.45;
+        }
+
+        technicalScore *= shortAnswerFactor;
+
+        const sentenceCount = answerText
+            .split(/[.!?]+/)
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .length;
+
+        let communicationScore = 3.0 + (5.0 * Math.min(wordCount / 80, 1.0)) + (3.0 * Math.min(sentenceCount / 5, 1.0));
+        communicationScore *= shortAnswerFactor;
+
+        if (wordCount >= 40 && conceptRatio >= 0.5) {
+            technicalScore += 0.4;
+            communicationScore += 0.2;
+        }
+
+        if (conceptCoverage.present.length >= 2 && wordCount >= 25) {
+            technicalScore += 0.3;
+        }
+
+        technicalScore = this.clampRange(technicalScore, 0, 10);
+        communicationScore = this.clampRange(communicationScore, 0, 10);
+        const score = this.clampRange((0.78 * technicalScore) + (0.22 * communicationScore), 0, 10);
+
+        return {
+            score,
+            technicalScore,
+            communicationScore
+        };
+    }
+
+    buildFallbackFeedback(quality, missingConcepts = []) {
+        let feedback;
+
+        if (quality === 'Excellent') {
+            feedback = 'Strong answer with clear technical depth and communication.';
+        } else if (quality === 'Good') {
+            feedback = 'Good answer. Add one more edge case or trade-off for a stronger response.';
+        } else if (quality === 'Average') {
+            feedback = 'Your answer is partially correct but needs better concept coverage.';
+        } else if (quality === 'Below Average') {
+            feedback = 'Your answer misses important concepts expected for this interview question.';
+        } else {
+            feedback = 'The answer is weak or incomplete for the asked question.';
+        }
+
+        if (Array.isArray(missingConcepts) && missingConcepts.length > 0) {
+            feedback += ` Missing concepts: ${missingConcepts.slice(0, 3).join(', ')}.`;
+        }
+
+        return feedback;
+    }
+
+    clampRange(value, min, max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     async generateFollowUpQuestion(context = {}) {

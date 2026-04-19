@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import interviewService from '../services/interviewService';
-import { 
-  Briefcase, 
-  Code, 
-  Target, 
-  ChevronRight, 
+import {
+  Briefcase,
+  Code,
+  Target,
+  ChevronRight,
   ChevronLeft,
-  Plus, 
+  Plus,
   X,
   User,
-  FileText
+  FileText,
+  BarChart3,
+  Sparkles,
+  Settings2
 } from 'lucide-react';
 
 const InterviewSetup = () => {
@@ -161,8 +164,8 @@ const InterviewSetup = () => {
 
   const handleJobRoleChange = (role) => {
     setError(''); // Clear error when user makes a change
-    setFormData({ 
-      ...formData, 
+    setFormData({
+      ...formData,
       jobRole: role,
       skills: [], // Reset skills when job role changes
       experienceLevel: '' // Reset experience level when job role changes
@@ -200,9 +203,9 @@ const InterviewSetup = () => {
   const addSkill = (skill) => {
     if (!formData.skills.includes(skill)) {
       setError(''); // Clear error when user makes a change
-      setFormData({ 
-        ...formData, 
-        skills: [...formData.skills, skill] 
+      setFormData({
+        ...formData,
+        skills: [...formData.skills, skill]
       });
     }
   };
@@ -223,12 +226,12 @@ const InterviewSetup = () => {
 
   const nextStep = () => {
     setError(''); // Clear any previous errors
-    
+
     // Allow progression through all steps without validation errors
     // Only validate on final submission
     const newStep = currentStep + 1;
     setCurrentStep(newStep);
-    
+
     // Clear error when reaching Step 4 to ensure clean slate
     if (newStep === 4) {
       setTimeout(() => setError(''), 100); // Clear any lingering errors
@@ -240,32 +243,31 @@ const InterviewSetup = () => {
   };
 
   const [isGenerating, setIsGenerating] = useState(false);
-  
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+
+  const handleSubmit = async () => {
     setError(''); // Clear any previous errors
-    
+
     // Only validate and submit when user is on Step 4 AND actually submitting
     if (currentStep !== 4) {
       return; // Don't submit if not on final step
     }
-    
+
     // Final validation only when actually submitting
     if (!formData.jobRole || (!formData.customJobRole && formData.jobRole === 'Other')) {
       setError('Please select or enter a job role');
       return;
     }
-    
+
     if (formData.skills.length === 0) {
       setError('Please select at least one skill');
       return;
     }
-    
+
     if (!formData.experienceLevel) {
       setError('Please select your experience level');
       return;
     }
-    
+
     if (!formData.interviewType) {
       setError('Please select an interview type');
       return;
@@ -273,7 +275,7 @@ const InterviewSetup = () => {
 
     try {
       setIsGenerating(true);
-      
+
       // Prepare interview setup data
       const interviewSetup = {
         jobRole: formData.jobRole,
@@ -294,7 +296,7 @@ const InterviewSetup = () => {
 
       // Generate questions using AI service
       const response = await interviewService.generateQuestions(interviewSetup);
-      
+
       if (!response.success) {
         throw new Error(response.message || 'Failed to generate questions');
       }
@@ -308,7 +310,7 @@ const InterviewSetup = () => {
 
     } catch (error) {
       console.error('Error starting interview:', error);
-      
+
       // Check if it's an authentication error
       if (error.message.includes('401') || error.message.includes('Unauthorized') || error.message.includes('User not found')) {
         setError('❌ Authentication expired. Please log out and log back in, or click the button below to clear your session.');
@@ -320,397 +322,493 @@ const InterviewSetup = () => {
     }
   };
 
-  // Step indicator
   const steps = [
-    { number: 1, title: 'Job Role', icon: Briefcase },
+    { number: 1, title: 'Role', icon: Briefcase },
     { number: 2, title: 'Skills', icon: Code },
     { number: 3, title: 'Experience', icon: User },
-    { number: 4, title: 'Settings', icon: Target }
+    { number: 4, title: 'Config', icon: Settings2 }
   ];
 
+  const stepHeading = {
+    1: {
+      title: 'Targeting Your Future.',
+      subtitle: 'Select the professional role you are preparing for. Our AI will calibrate the interview environment based on industry standards.'
+    },
+    2: {
+      title: 'Define Your Skill Stack.',
+      subtitle: 'Choose the exact technologies and competencies you want to be assessed on for this session.'
+    },
+    3: {
+      title: 'Calibrate Experience.',
+      subtitle: 'Pick the level that best reflects your current stage so question depth and complexity stay realistic.'
+    },
+    4: {
+      title: 'Finalize Configuration.',
+      subtitle: 'Set interview mode and difficulty, then generate your tailored interview session.'
+    }
+  };
+
+  const featuredRoles = ['Software Engineer', 'Product Manager', 'Data Scientist'];
+  const extraRoles = availableJobRoles.filter((role) => !featuredRoles.includes(role) && role !== 'Other');
+
+  const roleMeta = {
+    'Software Engineer': {
+      description: 'Backend, frontend, fullstack systems and algorithmic architecture.',
+      icon: Code
+    },
+    'Product Manager': {
+      description: 'Strategic roadmapping, user experience, and business logic execution.',
+      icon: Briefcase
+    },
+    'Data Scientist': {
+      description: 'Statistical modeling, ML pipelines, and quantitative insights.',
+      icon: BarChart3
+    }
+  };
+
+  const selectedRoleLabel = formData.jobRole === 'Other'
+    ? (formData.customJobRole.trim() || 'Custom Role')
+    : (formData.jobRole || 'your target role');
+
+  const progressWidth = ((currentStep - 1) / (steps.length - 1)) * 100;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Header */}
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Set Up Your Interview</h1>
-        <p className="text-gray-600">Configure your interview session to get personalized questions</p>
+    <div className="relative mx-auto max-w-[1120px] space-y-8 pb-6">
+      <div className="pointer-events-none absolute -left-20 top-28 hidden text-[92px] font-semibold leading-[0.92] tracking-[0.1em] text-slate-200/70 xl:block">
+        <p>PREP</p>
+        <p>GROW</p>
+        <p>WIN</p>
       </div>
 
-      {/* Step Indicator */}
-      <div className="flex items-center justify-center space-x-8 mb-8">
-        {steps.map((step) => {
-          const Icon = step.icon;
-          return (
-            <div key={step.number} className="flex items-center space-x-2">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                currentStep >= step.number 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-500'
-              }`}>
-                {currentStep > step.number ? (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <Icon className="w-5 h-5" />
-                )}
-              </div>
-              <span className={`text-sm font-medium ${
-                currentStep >= step.number ? 'text-blue-600' : 'text-gray-500'
-              }`}>
-                {step.title}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <div className="relative z-10 rounded-3xl border border-slate-200 bg-[#f5f7fc] px-5 py-6 shadow-sm sm:px-8 sm:py-8">
+        <div className="mx-auto max-w-3xl">
+          <div className="relative px-2 sm:px-6">
+            <div className="absolute left-[30px] right-[30px] top-4 h-[2px] bg-blue-100 sm:left-[48px] sm:right-[48px]" />
+            <div
+              className="absolute left-[30px] top-4 h-[2px] bg-blue-600 transition-all duration-300 sm:left-[48px]"
+              style={{ width: `calc((100% - 60px) * ${progressWidth / 100})` }}
+            />
 
-      {/* Error Message */}
-      {error && (
-        <div className="max-w-md mx-auto space-y-3">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center space-x-3">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-            <div className="flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setError('')}
-                className="inline-flex text-red-400 hover:text-red-600"
-              >
-                <span className="sr-only">Dismiss</span>
-                <X className="h-4 w-4" />
-              </button>
+            <div className="relative flex items-start justify-between">
+              {steps.map((step) => {
+                const isCompleted = currentStep > step.number;
+                const isActive = currentStep === step.number;
+
+                return (
+                  <div key={step.number} className="flex w-20 flex-col items-center gap-2 text-center sm:w-24">
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition sm:h-9 sm:w-9 ${isCompleted || isActive
+                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-400/40'
+                        : 'bg-blue-100 text-slate-600'
+                        }`}
+                    >
+                      {step.number}
+                    </div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${isCompleted || isActive ? 'text-blue-700' : 'text-slate-500'
+                      }`}>
+                      {step.title}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          
-          {/* Clear Session Button for Auth Errors */}
-          {error.includes('Authentication expired') && (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.removeItem('token');
-                  setError('');
-                  window.location.href = '/login';
-                }}
-                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Clear Session & Login Again</span>
-              </button>
+
+          <div className="mt-8 text-center sm:mt-10">
+            <h1 className="text-3xl font-semibold text-slate-900 sm:text-5xl">{stepHeading[currentStep].title}</h1>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-xl sm:leading-8">
+              {stepHeading[currentStep].subtitle}
+            </p>
+          </div>
+
+          {error && (
+            <div className="mx-auto mt-6 max-w-2xl space-y-3">
+              <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                <div className="mt-0.5 h-2.5 w-2.5 rounded-full bg-rose-500" />
+                <p className="flex-1 text-sm text-rose-700">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => setError('')}
+                  className="text-rose-400 transition hover:text-rose-600"
+                  aria-label="Dismiss error"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {error.includes('Authentication expired') && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem('token');
+                      setError('');
+                      window.location.href = '/login';
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Clear Session & Login Again
+                  </button>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      <form onSubmit={handleSubmit} onKeyDown={(e) => {
-        // Prevent form submission on Enter key unless on Step 4
-        if (e.key === 'Enter' && currentStep !== 4) {
-          e.preventDefault();
-          nextStep(); // Move to next step instead
-        }
-      }} className="space-y-8">
-        {/* Step 1: Job Role Selection */}
-        {currentStep === 1 && (
-          <div className="card">
-            <div className="flex items-center space-x-2 mb-6">
-              <Briefcase className="h-5 w-5 text-blue-600" />
-              <h2 className="text-xl font-semibold text-gray-900">Select Your Job Role</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {availableJobRoles.map((role) => (
+          <form
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && currentStep !== 4) {
+                e.preventDefault();
+                nextStep();
+              }
+            }}
+            className="mt-8 space-y-8"
+          >
+            {currentStep === 1 && (
+              <div className="space-y-5">
+                <div className="grid gap-4 md:grid-cols-3">
+                  {featuredRoles.map((role) => {
+                    const meta = roleMeta[role];
+                    const Icon = meta?.icon || Briefcase;
+                    const isSelected = formData.jobRole === role;
+
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => handleJobRoleChange(role)}
+                        className={`rounded-2xl border bg-white px-5 py-5 text-left transition ${isSelected
+                          ? 'border-blue-500 shadow-lg shadow-blue-100'
+                          : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                          }`}
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <h3 className="text-2xl font-semibold leading-tight text-slate-900">{role}</h3>
+                          <span className={`rounded-xl p-2 ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                            <Icon className="h-4 w-4" />
+                          </span>
+                        </div>
+                        <p className="text-sm leading-6 text-slate-500">{meta?.description || 'Role-specific interview simulation.'}</p>
+                        <p className="mt-6 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
+                          Select Role
+                          <ChevronRight className="h-3 w-3" />
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <button
-                  key={role}
                   type="button"
-                  onClick={() => handleJobRoleChange(role)}
-                  className={`p-4 text-left border rounded-lg transition-all hover:shadow-md ${
-                    formData.jobRole === role
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
+                  onClick={() => handleJobRoleChange('Other')}
+                  className={`flex w-full items-center justify-between rounded-2xl border border-dashed bg-white px-4 py-4 text-left transition ${formData.jobRole === 'Other'
+                    ? 'border-blue-500 bg-blue-50/40'
+                    : 'border-slate-300 hover:border-blue-400'
+                    }`}
                 >
-                  <div className="font-medium">{role}</div>
-                  {role !== 'Other' && jobRoleConfig[role] && (
-                    <div className="text-sm text-gray-500 mt-1">
-                      {Object.keys(jobRoleConfig[role].skills).length} skill categories
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-full bg-blue-600 p-1.5 text-white">
+                      <Plus className="h-3.5 w-3.5" />
+                    </span>
+                    <div>
+                      <p className="text-base font-semibold text-slate-900">Custom Role</p>
+                      <p className="text-sm text-slate-500">Define your own specific position or specialized niche.</p>
                     </div>
-                  )}
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-slate-400" />
                 </button>
-              ))}
-            </div>
 
-            {showCustomJobRole && (
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Enter your job role:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g., Machine Learning Engineer, QA Engineer..."
-                  value={formData.customJobRole}
-                  onChange={(e) => {
-                    setError(''); // Clear error when user makes a change
-                    setFormData({ ...formData, customJobRole: e.target.value });
-                  }}
-                  className="input-field"
-                />
+                {showCustomJobRole && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                      Enter Custom Role
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Machine Learning Engineer, QA Lead, Cloud Security Engineer..."
+                      value={formData.customJobRole}
+                      onChange={(e) => {
+                        setError('');
+                        setFormData({ ...formData, customJobRole: e.target.value });
+                      }}
+                      className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">More Roles</p>
+                  <div className="flex flex-wrap gap-2">
+                    {extraRoles.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => handleJobRoleChange(role)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${formData.jobRole === role
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-700'
+                          }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Step 2: Skills Selection */}
-        {currentStep === 2 && (
-          <div className="card">
-            <div className="flex items-center space-x-2 mb-6">
-              <Code className="h-5 w-5 text-blue-600" />
-              <h2 className="text-xl font-semibold text-gray-900">
-                Select Skills for {formData.jobRole === 'Other' ? formData.customJobRole : formData.jobRole}
-              </h2>
-            </div>
+            {currentStep === 2 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Selected Role</p>
+                    <h2 className="mt-1 text-xl font-semibold text-slate-900">{selectedRoleLabel}</h2>
+                  </div>
+                  <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                    {formData.skills.length} skills selected
+                  </span>
+                </div>
 
-            {/* Selected Skills */}
-            {formData.skills.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Selected Skills ({formData.skills.length}):</h3>
-                <div className="flex flex-wrap gap-2">
-                  {formData.skills.map((skill) => (
-                    <span
-                      key={skill}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800"
+                {formData.skills.length > 0 && (
+                  <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">Your Stack</p>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.skills.map((skill) => (
+                        <span key={skill} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                          {skill}
+                          <button type="button" onClick={() => removeSkill(skill)} className="text-slate-400 transition hover:text-rose-600" aria-label={`Remove ${skill}`}>
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {Object.entries(getCurrentSkillCategories()).map(([category, skills]) => (
+                    <div key={category} className="rounded-2xl border border-slate-200 p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-slate-800">{category}</h3>
+                        <span className="text-xs text-slate-500">
+                          {skills.filter((skill) => !formData.skills.includes(skill)).length} available
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {skills.map((skill) => {
+                          const selected = formData.skills.includes(skill);
+                          return (
+                            <button
+                              key={skill}
+                              type="button"
+                              onClick={() => addSkill(skill)}
+                              disabled={selected}
+                              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${selected
+                                ? 'cursor-not-allowed border-blue-200 bg-blue-50 text-blue-700'
+                                : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700'
+                                }`}
+                            >
+                              {skill}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Add Custom Skill</p>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      placeholder="Domain architecture, GraphQL federation, data storytelling..."
+                      value={customSkill}
+                      onChange={(e) => setCustomSkill(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addCustomSkill();
+                        }
+                      }}
+                      className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={addCustomSkill}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
                     >
-                      {skill}
-                      <button
-                        type="button"
-                        onClick={() => removeSkill(skill)}
-                        className="ml-2 hover:text-blue-600"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === 3 && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Role Context</p>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-900">{selectedRoleLabel}</h2>
+                </div>
+
+                <div className="grid gap-3">
+                  {getCurrentExperienceLevels().map((level) => (
+                    <button
+                      key={level.value}
+                      type="button"
+                      onClick={() => {
+                        setError('');
+                        setFormData({ ...formData, experienceLevel: level.value });
+                      }}
+                      className={`rounded-2xl border p-4 text-left transition ${formData.experienceLevel === level.value
+                        ? 'border-blue-500 bg-blue-50 shadow-sm'
+                        : 'border-slate-200 hover:border-blue-300'
+                        }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-base font-semibold text-slate-900">{level.label}</p>
+                        <span className={`h-3 w-3 rounded-full ${formData.experienceLevel === level.value ? 'bg-blue-600' : 'bg-slate-300'
+                          }`}
+                        />
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{level.desc}</p>
+                    </button>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Skill Categories */}
-            <div className="space-y-6">
-              {Object.entries(getCurrentSkillCategories()).map(([category, skills]) => (
-                <div key={category}>
-                  <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                    {category}
-                    <span className="ml-2 text-xs text-gray-500">
-                      ({skills.filter(skill => !formData.skills.includes(skill)).length} available)
-                    </span>
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {skills.map((skill) => (
+            {currentStep === 4 && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <div className="mb-4 flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <h2 className="text-base font-semibold text-slate-900">Interview Type</h2>
+                  </div>
+                  <div className="space-y-3">
+                    {[
+                      { value: 'technical', label: 'Technical Interview', desc: 'Coding, architecture, and engineering judgment.' },
+                      { value: 'behavioral', label: 'Behavioral Interview', desc: 'Leadership, collaboration, and communication depth.' },
+                      { value: 'mixed', label: 'Mixed Interview', desc: 'Balanced technical and behavioral progression.' }
+                    ].map((type) => (
                       <button
-                        key={skill}
+                        key={type.value}
                         type="button"
-                        onClick={() => addSkill(skill)}
-                        className={`px-3 py-2 text-sm rounded-lg border transition-all ${
-                          formData.skills.includes(skill)
-                            ? 'border-blue-500 bg-blue-50 text-blue-700 cursor-not-allowed'
-                            : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-                        }`}
-                        disabled={formData.skills.includes(skill)}
+                        onClick={() => {
+                          setError('');
+                          setFormData({ ...formData, interviewType: type.value });
+                        }}
+                        className={`w-full rounded-2xl border p-3 text-left transition ${formData.interviewType === type.value
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-blue-300'
+                          }`}
                       >
-                        {skill}
-                        {formData.skills.includes(skill) && <span className="ml-1">✓</span>}
+                        <p className="text-sm font-semibold text-slate-900">{type.label}</p>
+                        <p className="mt-1 text-xs text-slate-500">{type.desc}</p>
                       </button>
                     ))}
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Custom Skill Input */}
-            <div className="mt-8 border-t pt-6">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Add Custom Skill</h3>
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  placeholder="Enter a custom skill..."
-                  value={customSkill}
-                  onChange={(e) => setCustomSkill(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSkill())}
-                  className="flex-1 input-field"
-                />
+                <div className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Target className="h-4 w-4 text-blue-600" />
+                    <h2 className="text-base font-semibold text-slate-900">Configuration</h2>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Difficulty</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'easy', label: 'Easy' },
+                        { value: 'medium', label: 'Medium' },
+                        { value: 'hard', label: 'Hard' }
+                      ].map((diff) => (
+                        <button
+                          key={diff.value}
+                          type="button"
+                          onClick={() => {
+                            setError('');
+                            setFormData({ ...formData, difficulty: diff.value });
+                          }}
+                          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${formData.difficulty === diff.value
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-600 hover:border-blue-300'
+                            }`}
+                        >
+                          {diff.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Duration</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[20, 30, 45, 60].map((minutes) => (
+                        <button
+                          key={minutes}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, duration: minutes })}
+                          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${formData.duration === minutes
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-600 hover:border-blue-300'
+                            }`}
+                        >
+                          {minutes}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/70 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Session Summary</p>
+                    <p className="mt-2 text-sm text-slate-700"><span className="font-semibold">Role:</span> {selectedRoleLabel}</p>
+                    <p className="mt-1 text-sm text-slate-700"><span className="font-semibold">Skills:</span> {formData.skills.length || 0} selected</p>
+                    <p className="mt-1 text-sm text-slate-700"><span className="font-semibold">Level:</span> {formData.experienceLevel || 'Not selected'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-slate-200 pt-6">
+              <button
+                type="button"
+                onClick={prevStep}
+                className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:text-slate-900 ${currentStep === 1 ? 'invisible' : ''
+                  }`}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+
+              {currentStep < 4 ? (
                 <button
                   type="button"
-                  onClick={addCustomSkill}
-                  className="btn-secondary flex items-center space-x-1"
+                  onClick={nextStep}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-300/40 transition hover:bg-blue-700"
                 >
-                  <Plus className="h-4 w-4" />
-                  <span>Add</span>
+                  Next Step
+                  <ChevronRight className="h-4 w-4" />
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Experience Level */}
-        {currentStep === 3 && (
-          <div className="card">
-            <div className="flex items-center space-x-2 mb-6">
-              <User className="h-5 w-5 text-blue-600" />
-              <h2 className="text-xl font-semibold text-gray-900">
-                Experience Level for {formData.jobRole === 'Other' ? formData.customJobRole : formData.jobRole}
-              </h2>
-            </div>
-
-            <div className="space-y-4">
-              {getCurrentExperienceLevels().map((level) => (
-                <label key={level.value} className="flex items-start space-x-3 cursor-pointer p-4 border rounded-lg hover:bg-gray-50">
-                  <input
-                    type="radio"
-                    name="experienceLevel"
-                    value={level.value}
-                    checked={formData.experienceLevel === level.value}
-                    onChange={(e) => {
-                      setError(''); // Clear error when user makes a change
-                      setFormData({ ...formData, experienceLevel: e.target.value });
-                    }}
-                    className="mt-1"
-                  />
-                  <div className="flex-1">
-                    <div className="font-medium text-gray-900">{level.label}</div>
-                    <div className="text-sm text-gray-600 mt-1">{level.desc}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Interview Settings */}
-        {currentStep === 4 && (
-          <div className="space-y-8">
-            {/* Interview Type */}
-            <div className="card">
-              <div className="flex items-center space-x-2 mb-6">
-                <FileText className="h-5 w-5 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Interview Type</h2>
-              </div>
-
-              <div className="space-y-3">
-                {[
-                  { value: 'technical', label: 'Technical Interview', desc: 'Coding & problem solving' },
-                  { value: 'behavioral', label: 'Behavioral Interview', desc: 'Soft skills & experience' },
-                  { value: 'mixed', label: 'Mixed Interview', desc: 'Technical + behavioral questions' }
-                ].map((type) => (
-                  <label key={type.value} className="flex items-start space-x-3 cursor-pointer p-4 border rounded-lg hover:bg-gray-50">
-                    <input
-                      type="radio"
-                      name="interviewType"
-                      value={type.value}
-                      checked={formData.interviewType === type.value}
-                      onChange={(e) => {
-                        setError(''); // Clear error when user makes a change
-                        setFormData({ ...formData, interviewType: e.target.value });
-                      }}
-                      className="mt-1"
-                    />
-                    <div>
-                      <div className="font-medium text-gray-900">{type.label}</div>
-                      <div className="text-sm text-gray-500">{type.desc}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Difficulty */}
-            <div className="card">
-              <div className="flex items-center space-x-2 mb-6">
-                <Target className="h-5 w-5 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Difficulty Level</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  { value: 'easy', label: 'Easy', color: 'border-green-200 bg-green-50 text-green-800', desc: 'Basic concepts and straightforward questions' },
-                  { value: 'medium', label: 'Medium', color: 'border-yellow-200 bg-yellow-50 text-yellow-800', desc: 'Standard interview questions' },
-                  { value: 'hard', label: 'Hard', color: 'border-red-200 bg-red-50 text-red-800', desc: 'Challenging problems and advanced topics' }
-                ].map((diff) => (
-                  <label key={diff.value} className="cursor-pointer">
-                    <input
-                      type="radio"
-                      name="difficulty"
-                      value={diff.value}
-                      checked={formData.difficulty === diff.value}
-                      onChange={(e) => {
-                        setError(''); // Clear error when user makes a change
-                        setFormData({ ...formData, difficulty: e.target.value });
-                      }}
-                      className="sr-only"
-                    />
-                    <div className={`p-4 border-2 rounded-lg transition-all ${
-                      formData.difficulty === diff.value
-                        ? `${diff.color} border-opacity-100`
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                      <div className={`font-semibold ${formData.difficulty === diff.value ? '' : 'text-gray-700'}`}>
-                        {diff.label}
-                      </div>
-                      <div className={`text-sm mt-1 ${formData.difficulty === diff.value ? 'opacity-80' : 'text-gray-500'}`}>
-                        {diff.desc}
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Navigation Buttons */}
-        <div className="flex justify-between items-center">
-          <button
-            type="button"
-            onClick={prevStep}
-            className={`flex items-center space-x-2 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 ${
-              currentStep === 1 ? 'invisible' : ''
-            }`}
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span>Previous</span>
-          </button>
-
-          {currentStep < 4 ? (
-            <button
-              type="button"
-              onClick={nextStep}
-              className="btn-primary flex items-center space-x-2 px-6 py-2"
-            >
-              <span>Next</span>
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={isGenerating}
-              className="btn-primary flex items-center space-x-2 px-8 py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating && (
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isGenerating}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-300/40 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isGenerating && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                  {isGenerating ? 'Generating Questions...' : 'Start Interview'}
+                  {!isGenerating && <ChevronRight className="h-4 w-4" />}
+                </button>
               )}
-              <span>{isGenerating ? 'Generating Questions...' : 'Start Interview'}</span>
-              {!isGenerating && <ChevronRight className="h-5 w-5" />}
-            </button>
-          )}
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   );
 };

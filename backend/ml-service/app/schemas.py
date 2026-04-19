@@ -48,9 +48,12 @@ class IndividualEvaluation(BaseModel):
     score: float
     technicalScore: float
     communicationScore: float
+    quality: Optional[str] = None
     strengths: List[str] = Field(default_factory=list)
     improvements: List[str] = Field(default_factory=list)
+    missingPoints: List[str] = Field(default_factory=list)
     feedback: str
+    improvementTip: Optional[str] = None
 
 
 class BatchEvaluateResponse(BaseModel):

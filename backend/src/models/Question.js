@@ -33,6 +33,10 @@ const questionSchema = new mongoose.Schema({
     required: [true, 'Question category is required'],
     trim: true
   },
+  expectedConcepts: {
+    type: [String],
+    default: []
+  },
   difficulty: {
     type: String,
     required: [true, 'Difficulty is required'],
@@ -56,7 +60,7 @@ questionSchema.index({ interviewId: 1, questionNumber: 1 });
 questionSchema.index({ questionId: 1 });
 
 // Instance method to get difficulty score
-questionSchema.methods.getDifficultyScore = function() {
+questionSchema.methods.getDifficultyScore = function () {
   const scores = {
     'Easy': 1,
     'Medium': 2,

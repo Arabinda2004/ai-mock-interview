@@ -29,6 +29,23 @@ python training/train_deberta.py \
   --seed 42
 ```
 
+### Faster Colab/T4 Training (Recommended)
+
+```bash
+python training/train_deberta.py \
+  --dataset-jsonl ../data/train_dataset.jsonl \
+  --output-dir ../artifacts \
+  --model-name microsoft/deberta-v3-base \
+  --epochs 1 \
+  --batch-size 4 \
+  --max-length 192 \
+  --fp16 \
+  --fast-mode \
+  --seed 42
+```
+
+If GPU memory is tight, reduce `--batch-size` to `2` and `--max-length` to `128`.
+
 ## 4. Evaluate Trained Models
 
 ```bash

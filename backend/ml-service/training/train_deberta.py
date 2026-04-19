@@ -38,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--batch-size', type=int, default=8)
     parser.add_argument('--max-length', type=int, default=256)
     parser.add_argument('--learning-rate', type=float, default=2e-5)
+    parser.add_argument('--fp16', action='store_true', help='Enable mixed precision on CUDA GPUs')
+    parser.add_argument('--fast-mode', action='store_true', help='Use faster training settings for quick GPU iterations')
+    parser.add_argument('--num-workers', type=int, default=2, help='Dataloader workers per process')
+    parser.add_argument('--max-train-samples', type=int, default=0, help='Optional cap for train split size')
+    parser.add_argument('--max-val-samples', type=int, default=0, help='Optional cap for validation split size')
+    parser.add_argument('--max-test-samples', type=int, default=0, help='Optional cap for test split size')
     parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
 
@@ -127,11 +133,12 @@ def build_text_fields(df):
     return df
 
 
-def to_hf_dataset(df, label_column: str):
-    from datasets import Dataset
+def to_hf_dataset(df, label_column: str, label_dtype: str):
+    from datasets import Dataset, Value
 
     subset = df[['text', label_column]].rename(columns={label_column: 'labels'})
-    return Dataset.from_pandas(subset, preserve_index=False)
+    dataset = Dataset.from_pandas(subset, preserve_index=False)
+    return dataset.cast_column('labels', Value(label_dtype))
 
 
 def tokenize_dataset(dataset, tokenizer, max_length: int):
@@ -139,13 +146,19 @@ def tokenize_dataset(dataset, tokenizer, max_length: int):
         return tokenizer(
             batch['text'],
             truncation=True,
-            padding='max_length',
             max_length=max_length,
         )
 
     tokenized = dataset.map(tokenize, batched=True)
     tokenized.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
     return tokenized
+
+
+def create_data_collator(tokenizer, use_fp16: bool):
+    from transformers import DataCollatorWithPadding
+
+    pad_multiple = 8 if use_fp16 else None
+    return DataCollatorWithPadding(tokenizer=tokenizer, pad_to_multiple_of=pad_multiple)
 
 
 def prepare_clean_output_dir(path: Path) -> None:
@@ -168,10 +181,20 @@ def create_training_arguments(kwargs: Dict):
     return TrainingArguments(**filtered)
 
 
-def create_trainer(model, training_args, train_dataset, eval_dataset, tokenizer, compute_metrics):
+def create_trainer(
+    model,
+    training_args,
+    train_dataset,
+    eval_dataset,
+    tokenizer,
+    compute_metrics,
+    data_collator,
+    trainer_class=None,
+):
     from transformers import Trainer
 
-    supported = set(inspect.signature(Trainer.__init__).parameters.keys())
+    trainer_type = trainer_class or Trainer
+    supported = set(inspect.signature(trainer_type.__init__).parameters.keys())
     trainer_kwargs = {
         'model': model,
         'args': training_args,
@@ -180,12 +203,97 @@ def create_trainer(model, training_args, train_dataset, eval_dataset, tokenizer,
         'compute_metrics': compute_metrics,
     }
 
+    if 'data_collator' in supported and data_collator is not None:
+        trainer_kwargs['data_collator'] = data_collator
+
     if 'tokenizer' in supported:
         trainer_kwargs['tokenizer'] = tokenizer
     elif 'processing_class' in supported:
         trainer_kwargs['processing_class'] = tokenizer
 
-    return Trainer(**trainer_kwargs)
+    return trainer_type(**trainer_kwargs)
+
+
+def build_training_kwargs(
+    args,
+    output_dir: Path,
+    metric_for_best_model: str,
+    greater_is_better: bool,
+):
+    kwargs = {
+        'output_dir': str(output_dir),
+        'overwrite_output_dir': True,
+        'num_train_epochs': args.epochs,
+        'per_device_train_batch_size': args.batch_size,
+        'per_device_eval_batch_size': args.batch_size,
+        'learning_rate': args.learning_rate,
+        'logging_steps': 200 if args.fast_mode else 50,
+        'report_to': 'none',
+        'save_total_limit': 1 if args.fast_mode else 2,
+        'dataloader_num_workers': max(0, args.num_workers),
+        'dataloader_pin_memory': True,
+        'max_grad_norm': 1.0,
+    }
+
+    if args.fp16:
+        kwargs['fp16'] = True
+
+    if args.fast_mode:
+        kwargs.update(
+            {
+                'evaluation_strategy': 'no',
+                'save_strategy': 'no',
+                'load_best_model_at_end': False,
+            }
+        )
+    else:
+        kwargs.update(
+            {
+                'evaluation_strategy': 'epoch',
+                'save_strategy': 'epoch',
+                'load_best_model_at_end': True,
+                'metric_for_best_model': metric_for_best_model,
+                'greater_is_better': greater_is_better,
+            }
+        )
+
+    return kwargs
+
+
+class RegressionTrainerMixin:
+    """Ensure stable regression loss with mixed precision by computing MSE in float32."""
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        import torch
+        import torch.nn.functional as F
+
+        labels = inputs.pop('labels')
+        outputs = model(**inputs)
+        logits = outputs.get('logits')
+        if logits is None:
+            raise RuntimeError('Regression model outputs did not include logits')
+
+        logits = logits.squeeze(-1)
+        loss = F.mse_loss(logits.float(), labels.float())
+
+        if return_outputs:
+            return loss, outputs
+        return loss
+
+
+def create_regression_trainer_class():
+    from transformers import Trainer
+
+    class RegressionTrainer(RegressionTrainerMixin, Trainer):
+        pass
+
+    return RegressionTrainer
+
+
+def cap_split_size(df, max_samples: int, seed: int):
+    if max_samples <= 0 or len(df) <= max_samples:
+        return df
+    return df.sample(n=max_samples, random_state=seed).reset_index(drop=True)
 
 
 def train_classifier(args, train_df, val_df, test_df, quality_to_id, id_to_quality):
@@ -194,11 +302,10 @@ def train_classifier(args, train_df, val_df, test_df, quality_to_id, id_to_quali
     from transformers import (
         AutoModelForSequenceClassification,
         AutoTokenizer,
-        Trainer,
-        TrainingArguments,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    data_collator = create_data_collator(tokenizer, use_fp16=args.fp16)
 
     train_data = train_df.copy()
     val_data = val_df.copy()
@@ -208,9 +315,9 @@ def train_classifier(args, train_df, val_df, test_df, quality_to_id, id_to_quali
     val_data['label'] = val_data['quality'].map(quality_to_id)
     test_data['label'] = test_data['quality'].map(quality_to_id)
 
-    train_ds = tokenize_dataset(to_hf_dataset(train_data, 'label'), tokenizer, args.max_length)
-    val_ds = tokenize_dataset(to_hf_dataset(val_data, 'label'), tokenizer, args.max_length)
-    test_ds = tokenize_dataset(to_hf_dataset(test_data, 'label'), tokenizer, args.max_length)
+    train_ds = tokenize_dataset(to_hf_dataset(train_data, 'label', 'int64'), tokenizer, args.max_length)
+    val_ds = tokenize_dataset(to_hf_dataset(val_data, 'label', 'int64'), tokenizer, args.max_length)
+    test_ds = tokenize_dataset(to_hf_dataset(test_data, 'label', 'int64'), tokenizer, args.max_length)
 
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name,
@@ -231,22 +338,12 @@ def train_classifier(args, train_df, val_df, test_df, quality_to_id, id_to_quali
     prepare_clean_output_dir(classifier_output_dir)
 
     training_args = create_training_arguments(
-        {
-            'output_dir': str(classifier_output_dir),
-            'overwrite_output_dir': True,
-            'num_train_epochs': args.epochs,
-            'per_device_train_batch_size': args.batch_size,
-            'per_device_eval_batch_size': args.batch_size,
-            'learning_rate': args.learning_rate,
-            'evaluation_strategy': 'epoch',
-            'save_strategy': 'epoch',
-            'load_best_model_at_end': True,
-            'metric_for_best_model': 'f1_macro',
-            'greater_is_better': True,
-            'logging_steps': 50,
-            'report_to': 'none',
-            'save_total_limit': 2,
-        }
+        build_training_kwargs(
+            args=args,
+            output_dir=classifier_output_dir,
+            metric_for_best_model='f1_macro',
+            greater_is_better=True,
+        )
     )
 
     trainer = create_trainer(
@@ -256,6 +353,7 @@ def train_classifier(args, train_df, val_df, test_df, quality_to_id, id_to_quali
         eval_dataset=val_ds,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
+        data_collator=data_collator,
     )
 
     trainer.train()
@@ -285,11 +383,10 @@ def train_regressor(args, train_df, val_df, test_df):
     from transformers import (
         AutoModelForSequenceClassification,
         AutoTokenizer,
-        Trainer,
-        TrainingArguments,
     )
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    data_collator = create_data_collator(tokenizer, use_fp16=args.fp16)
 
     train_data = train_df.copy()
     val_data = val_df.copy()
@@ -299,9 +396,9 @@ def train_regressor(args, train_df, val_df, test_df):
     val_data['score_label'] = val_data['score'].astype(float)
     test_data['score_label'] = test_data['score'].astype(float)
 
-    train_ds = tokenize_dataset(to_hf_dataset(train_data, 'score_label'), tokenizer, args.max_length)
-    val_ds = tokenize_dataset(to_hf_dataset(val_data, 'score_label'), tokenizer, args.max_length)
-    test_ds = tokenize_dataset(to_hf_dataset(test_data, 'score_label'), tokenizer, args.max_length)
+    train_ds = tokenize_dataset(to_hf_dataset(train_data, 'score_label', 'float32'), tokenizer, args.max_length)
+    val_ds = tokenize_dataset(to_hf_dataset(val_data, 'score_label', 'float32'), tokenizer, args.max_length)
+    test_ds = tokenize_dataset(to_hf_dataset(test_data, 'score_label', 'float32'), tokenizer, args.max_length)
 
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name,
@@ -323,24 +420,15 @@ def train_regressor(args, train_df, val_df, test_df):
     prepare_clean_output_dir(regressor_output_dir)
 
     training_args = create_training_arguments(
-        {
-            'output_dir': str(regressor_output_dir),
-            'overwrite_output_dir': True,
-            'num_train_epochs': args.epochs,
-            'per_device_train_batch_size': args.batch_size,
-            'per_device_eval_batch_size': args.batch_size,
-            'learning_rate': args.learning_rate,
-            'evaluation_strategy': 'epoch',
-            'save_strategy': 'epoch',
-            'load_best_model_at_end': True,
-            'metric_for_best_model': 'mae',
-            'greater_is_better': False,
-            'logging_steps': 50,
-            'report_to': 'none',
-            'save_total_limit': 2,
-        }
+        build_training_kwargs(
+            args=args,
+            output_dir=regressor_output_dir,
+            metric_for_best_model='mae',
+            greater_is_better=False,
+        )
     )
 
+    regression_trainer_class = create_regression_trainer_class()
     trainer = create_trainer(
         model=model,
         training_args=training_args,
@@ -348,6 +436,8 @@ def train_regressor(args, train_df, val_df, test_df):
         eval_dataset=val_ds,
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
+        data_collator=data_collator,
+        trainer_class=regression_trainer_class,
     )
 
     trainer.train()
@@ -410,6 +500,24 @@ def main() -> None:
         raise SystemExit('At least 3 quality classes are required for meaningful classification training.')
 
     train_df, val_df, test_df = make_splits(df, args.seed)
+
+    if args.fast_mode:
+        # Sensible defaults for fast Colab iterations unless explicitly overridden.
+        if args.max_train_samples <= 0:
+            args.max_train_samples = 12000
+        if args.max_val_samples <= 0:
+            args.max_val_samples = 2500
+        if args.max_test_samples <= 0:
+            args.max_test_samples = 2500
+
+    train_df = cap_split_size(train_df, args.max_train_samples, args.seed)
+    val_df = cap_split_size(val_df, args.max_val_samples, args.seed)
+    test_df = cap_split_size(test_df, args.max_test_samples, args.seed)
+
+    print(
+        f'Training config: fp16={args.fp16}, fast_mode={args.fast_mode}, '
+        f'batch_size={args.batch_size}, max_length={args.max_length}, epochs={args.epochs}'
+    )
 
     # Save reproducible splits.
     save_jsonl(train_df, output_dir / 'splits' / 'train.jsonl')
